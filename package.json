@@ -12,6 +12,9 @@
     "order",
     "sort"
   ],
+  "files": [
+    "dist"
+  ],
   "license": "MIT",
   "author": "Felix M. <me@felix.hamburg>",
   "type": "commonjs",
@@ -34,7 +37,6 @@
   },
   "scripts": {
     "build": "strapi-plugin build",
-    "postinstall": "npm run build",
     "test": "vitest",
     "test:ts:back": "run -T tsc -p server/tsconfig.json",
     "test:ts:front": "run -T tsc -p admin/tsconfig.json",

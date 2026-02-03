@@ -1,0 +1,11 @@
+const en = {
+  "sortable-entries.title": "Sort entries",
+  "sortable-entries.empty-state.failure": "Failed to fetch data! Please try again.",
+  "sortable-entries.empty-state.noContent": "You don't have any content yet…",
+  "sortable-entries.cancel-button.title": "Cancel",
+  "sortable-entries.submit-button.title": "Submit",
+  "sortable-entries.notification.failure": "Failed to submit data! Please reopen the modal and try again."
+};
+export {
+  en as default
+};
