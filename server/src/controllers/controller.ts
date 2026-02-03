@@ -43,27 +43,37 @@ const controller = ({ strapi }: { strapi: Core.Strapi }) => ({
    * of the collection type with the given `uid` path parameter (GET request).
    */
   async fetchEntries(ctx: Context) {
-    const { uid } = ctx.params as FetchEntriesParams;
-    const { mainField, filters, locale, relationFields } = ctx.request.query as FetchEntriesQuery;
+    try {
+      const { uid } = ctx.params as FetchEntriesParams;
+      const { mainField, filters, locale, relationFields } = ctx.request.query as FetchEntriesQuery;
 
-    if (!mainField) {
-      ctx.badRequest('Missing required `mainField` query parameter.');
-      return;
+      if (!mainField) {
+        ctx.badRequest('Missing required `mainField` query parameter.');
+        return;
+      }
+
+      const parsedRelationFields = relationFields ? relationFields.split(',') : undefined;
+
+      const service = strapi.plugin('sortable-entries').service('service');
+      if (!service) {
+        ctx.internalServerError('Service not found');
+        return;
+      }
+
+      const entries = await service.fetchEntries({
+        uid,
+        mainField,
+        filters,
+        locale,
+        relationFields: parsedRelationFields,
+      });
+
+      // Minify response.
+      ctx.response.body = JSON.stringify(entries);
+    } catch (error) {
+      console.error('Error in fetchEntries:', error);
+      ctx.internalServerError(error instanceof Error ? error.message : 'Unknown error');
     }
-
-    const parsedRelationFields = relationFields ? relationFields.split(',') : undefined;
-
-    const service = strapi.plugin('sortable-entries').service('service');
-    const entries = await service.fetchEntries({
-      uid,
-      mainField,
-      filters,
-      locale,
-      relationFields: parsedRelationFields,
-    });
-
-    // Minify response.
-    ctx.response.body = JSON.stringify(entries);
   },
 
   /**

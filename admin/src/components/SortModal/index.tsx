@@ -134,7 +134,15 @@ const SortModal = ({
 
       setEntriesFetchState({ status: FetchStatus.Resolved, value: entries });
     } catch (error) {
-      console.error(`Failed to fetch data: ${error}`);
+      console.error(`Failed to fetch data:`, error);
+      if (error instanceof Error) {
+        console.error('Error details:', {
+          message: error.message,
+          stack: error.stack,
+          response: (error as any).response?.data,
+          status: (error as any).response?.status,
+        });
+      }
 
       // This will show a corresponding error message in the modal.
       // We therefore don't need to trigger an extra notification here.
