@@ -32,7 +32,7 @@ const SortModalContainer = () => {
   const { uid } = contentType;
   const { mainField } = layout.list.settings;
 
-  return <SortModal uid={uid} mainField={mainField} />;
+  return <SortModal uid={uid} mainField={mainField} contentType={contentType} />;
 };
 
 export default SortModalContainer;

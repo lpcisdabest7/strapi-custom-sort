@@ -26,6 +26,31 @@ interface SortableDocument extends AnyDocument {
 const hasSortOrderField = (input: any): input is SortableDocumentInput =>
   input.hasOwnProperty(config.sortOrderField);
 
+/**
+ * Gets the minimum value constraint for the sortOrder field from the content type schema.
+ *
+ * @param strapi - The Strapi instance.
+ * @param uid - The content type UID.
+ *
+ * @returns The minimum value allowed for sortOrder, or undefined if no constraint exists.
+ */
+const getSortOrderMinValue = (strapi: Core.Strapi, uid: string): number | undefined => {
+  try {
+    // In Strapi v5, access content type schema through the registry
+    const contentType = (strapi as any).get('content-types').get(uid);
+    if (!contentType || !contentType.attributes) {
+      return undefined;
+    }
+    const sortOrderAttribute = contentType.attributes[config.sortOrderField];
+    if (!sortOrderAttribute || sortOrderAttribute.type !== 'integer') {
+      return undefined;
+    }
+    return sortOrderAttribute.min;
+  } catch {
+    return undefined;
+  }
+};
+
 //
 // Middleware
 //
@@ -52,13 +77,26 @@ export const assignSortOrderValueMiddlewareCallback: Modules.Documents.Middlewar
           break;
         }
 
+        // Get the minimum value constraint for sortOrder field
+        const minValue = getSortOrderMinValue(strapi, context.uid);
+        const defaultSortOrder = minValue !== undefined && minValue > 0 ? minValue : 0;
+
         // prettier-ignore
         const lastEntry = (await strapi
           .service('plugin::sortable-entries.service')
           .fetchLastEntry({uid: context.uid, locale: data.locale})) as SortableDocument | undefined;
 
         const lastSortOrder = lastEntry?.[config.sortOrderField];
-        const nextSortOrder = lastSortOrder || lastSortOrder === 0 ? lastSortOrder + 1 : 0;
+        let nextSortOrder: number;
+        if (lastSortOrder !== null && lastSortOrder !== undefined) {
+          nextSortOrder = lastSortOrder + 1;
+          // Ensure nextSortOrder respects the min constraint
+          if (minValue !== undefined && nextSortOrder < minValue) {
+            nextSortOrder = minValue;
+          }
+        } else {
+          nextSortOrder = defaultSortOrder;
+        }
 
         data[config.sortOrderField] = nextSortOrder;
         break;

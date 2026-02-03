@@ -16,6 +16,7 @@ interface FetchEntriesQuery {
   mainField?: string;
   filters?: Filters;
   locale?: Locale;
+  relationFields?: string;
 }
 
 /** The URL path parameters for the update sort order request. */
@@ -43,12 +44,14 @@ const controller = ({ strapi }: { strapi: Core.Strapi }) => ({
    */
   async fetchEntries(ctx: Context) {
     const { uid } = ctx.params as FetchEntriesParams;
-    const { mainField, filters, locale } = ctx.request.query as FetchEntriesQuery;
+    const { mainField, filters, locale, relationFields } = ctx.request.query as FetchEntriesQuery;
 
     if (!mainField) {
       ctx.badRequest('Missing required `mainField` query parameter.');
       return;
     }
+
+    const parsedRelationFields = relationFields ? relationFields.split(',') : undefined;
 
     const service = strapi.plugin('sortable-entries').service('service');
     const entries = await service.fetchEntries({
@@ -56,6 +59,7 @@ const controller = ({ strapi }: { strapi: Core.Strapi }) => ({
       mainField,
       filters,
       locale,
+      relationFields: parsedRelationFields,
     });
 
     // Minify response.

@@ -46,8 +46,17 @@ const config = {
  *
  * @param uid - The unique identifier of the content type which entries are sorted.
  * @param mainField - The displayed field of each entry in the collection type.
+ * @param contentType - The content type configuration.
  */
-const SortModal = ({ uid, mainField }: { uid: UID.ContentType; mainField: string }) => {
+const SortModal = ({
+  uid,
+  mainField,
+  contentType,
+}: {
+  uid: UID.ContentType;
+  mainField: string;
+  contentType: any;
+}) => {
   const [isOpen, setIsOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
@@ -67,16 +76,59 @@ const SortModal = ({ uid, mainField }: { uid: UID.ContentType; mainField: string
   const locale = queryParams.query.plugins.i18n.locale;
 
   /**
+   * Gets all relation fields from contentType attributes.
+   */
+  const getRelationFields = (): string[] => {
+    if (!contentType || !contentType.attributes) {
+      return [];
+    }
+    const relationFields: string[] = [];
+    Object.keys(contentType.attributes).forEach((fieldName) => {
+      const attribute = contentType.attributes[fieldName];
+      if (
+        attribute.type === 'relation' ||
+        attribute.type === 'media' ||
+        (attribute.type && typeof attribute.type === 'string' && attribute.type.includes('relation'))
+      ) {
+        relationFields.push(fieldName);
+      }
+    });
+    return relationFields;
+  };
+
+  /**
+   * Checks if a field is a system field (not a user-defined field).
+   */
+  const isSystemField = (fieldName: string): boolean => {
+    const systemFields = [
+      'documentId',
+      'id',
+      'createdAt',
+      'updatedAt',
+      'publishedAt',
+      'createdBy',
+      'updatedBy',
+      'locale',
+      'localizations',
+    ];
+    return systemFields.includes(fieldName);
+  };
+
+  /**
    * Fetches the entries of the current collection type.
    */
   const fetchEntries = async () => {
     setEntriesFetchState({ status: FetchStatus.Loading });
 
     try {
+      const relationFields = getRelationFields();
+      const useRelationFields = isSystemField(mainField);
+      const relationFieldsParam = useRelationFields && relationFields.length > 0 ? relationFields.join(',') : undefined;
+
       const { data: entries } = await fetchClient.get<Entries>(
         config.fetchEntriesRequest.path(uid),
         {
-          params: { mainField, filters, locale },
+          params: { mainField, filters, locale, relationFields: relationFieldsParam },
         }
       );
 
@@ -181,6 +233,7 @@ const SortModal = ({ uid, mainField }: { uid: UID.ContentType; mainField: string
           <SortModalBody
             entriesFetchState={entriesFetchState}
             mainField={mainField}
+            contentType={contentType}
             handleDragEnd={handleDragEnd}
             disabled={isSubmitting}
           />

@@ -29,14 +29,31 @@ const service = ({ strapi }: { strapi: Core.Strapi }) => ({
     mainField,
     filters,
     locale,
+    relationFields,
   }: {
     uid: ContentTypeUID;
     mainField: string;
     filters: Filters | undefined;
     locale: Locale | undefined;
+    relationFields?: string[];
   }) {
+    const fields = ['documentId', mainField];
+    if (relationFields && relationFields.length > 0) {
+      relationFields.forEach((field) => {
+        if (!fields.includes(field)) {
+          fields.push(field);
+        }
+      });
+    }
+    const populate: Record<string, any> = {};
+    if (relationFields && relationFields.length > 0) {
+      relationFields.forEach((field) => {
+        populate[field] = true;
+      });
+    }
     return await strapi.documents(uid).findMany({
-      fields: ['documentId', mainField],
+      fields,
+      populate: Object.keys(populate).length > 0 ? populate : undefined,
       sort: `${config.sortOrderField}:asc`,
       filters,
       locale,
