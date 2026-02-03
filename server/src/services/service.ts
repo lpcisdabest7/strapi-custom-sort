@@ -86,7 +86,27 @@ const service = ({ strapi }: { strapi: Core.Strapi }) => ({
     locale: Locale | undefined;
     relationFields?: string[];
   }) {
-    const fields = ['documentId', mainField];
+    // Start with only documentId and mainField
+    // Only add relation fields if they exist and are queryable
+    const fields: string[] = ['documentId'];
+
+    // Validate mainField exists in content type
+    try {
+      const contentType = (strapi as any).get('content-types')?.get(uid);
+      const attributes = contentType?.attributes || {};
+
+      // Only add mainField if it exists in content type
+      if (attributes[mainField] || mainField === 'documentId') {
+        if (!fields.includes(mainField)) {
+          fields.push(mainField);
+        }
+      } else {
+        console.warn(`MainField ${mainField} not found in content type, using documentId only`);
+      }
+    } catch (error) {
+      console.warn('Error validating mainField:', error);
+      // Fallback to documentId only
+    }
 
     // Validate and filter relation fields to only include actual relation fields
     const validRelationFields: string[] = [];
@@ -109,7 +129,7 @@ const service = ({ strapi }: { strapi: Core.Strapi }) => ({
             return;
           }
 
-          // Check if field exists in content type
+          // Check if field exists in content type AND is queryable
           if (attributes[field]) {
             const attribute = attributes[field];
             console.log(`Field ${field} attribute:`, {
@@ -117,17 +137,17 @@ const service = ({ strapi }: { strapi: Core.Strapi }) => ({
               relation: attribute.relation,
             });
 
-            // Only include relation or media fields
+            // Only include relation or media fields that can be queried
+            // Don't add to fields array - relation fields are accessed via populate, not fields
             if (
               attribute.type === 'relation' ||
               attribute.type === 'media' ||
               (attribute.relation && typeof attribute.relation === 'string')
             ) {
               validRelationFields.push(field);
-              if (!fields.includes(field)) {
-                fields.push(field);
-              }
-              console.log(`Added valid relation field: ${field}`);
+              // DO NOT add relation fields to fields array - this causes "Invalid key" error
+              // Relation fields are accessed via populate, not fields parameter
+              console.log(`Added valid relation field for populate: ${field}`);
             } else {
               console.log(`Field ${field} is not a relation field, type: ${attribute.type}`);
             }
@@ -141,7 +161,8 @@ const service = ({ strapi }: { strapi: Core.Strapi }) => ({
       }
     }
 
-    console.log('Valid relation fields after validation:', validRelationFields);
+    console.log('Fields to query:', fields);
+    console.log('Valid relation fields for populate:', validRelationFields);
 
     // For now, don't populate relation fields to avoid "Invalid key" errors
     // Frontend will receive relation IDs and can fetch them separately if needed
