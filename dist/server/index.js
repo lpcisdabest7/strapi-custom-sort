@@ -223,7 +223,20 @@ const service = ({ strapi: strapi2 }) => ({
     locale,
     relationFields
   }) {
-    const fields = ["documentId", mainField];
+    const fields = ["documentId"];
+    try {
+      const contentType = strapi2.get("content-types")?.get(uid);
+      const attributes = contentType?.attributes || {};
+      if (attributes[mainField] || mainField === "documentId") {
+        if (!fields.includes(mainField)) {
+          fields.push(mainField);
+        }
+      } else {
+        console.warn(`MainField ${mainField} not found in content type, using documentId only`);
+      }
+    } catch (error) {
+      console.warn("Error validating mainField:", error);
+    }
     const validRelationFields = [];
     const systemFields = ["createdBy", "updatedBy", "localizations", "locale"];
     if (relationFields && relationFields.length > 0) {
@@ -247,10 +260,7 @@ const service = ({ strapi: strapi2 }) => ({
             });
             if (attribute.type === "relation" || attribute.type === "media" || attribute.relation && typeof attribute.relation === "string") {
               validRelationFields.push(field);
-              if (!fields.includes(field)) {
-                fields.push(field);
-              }
-              console.log(`Added valid relation field: ${field}`);
+              console.log(`Added valid relation field for populate: ${field}`);
             } else {
               console.log(`Field ${field} is not a relation field, type: ${attribute.type}`);
             }
@@ -262,39 +272,23 @@ const service = ({ strapi: strapi2 }) => ({
         console.warn("Error validating relation fields:", error);
       }
     }
-    console.log("Valid relation fields after validation:", validRelationFields);
-    let populate = void 0;
-    if (validRelationFields.length > 0) {
-      populate = {};
-      for (const field of validRelationFields) {
-        try {
-          populate[field] = true;
-        } catch (error) {
-          console.warn(`Failed to configure populate for field ${field}:`, error);
-        }
-      }
-      if (Object.keys(populate).length === 0) {
-        populate = void 0;
-      }
-    }
+    console.log("Fields to query:", fields);
+    console.log("Valid relation fields for populate:", validRelationFields);
     try {
       const result = await strapi2.documents(uid).findMany({
         fields,
-        populate,
-        sort: `${config$1.sortOrderField}:asc`,
-        filters,
-        locale
-      });
-      return result;
-    } catch (error) {
-      console.warn("Error with populate, retrying without populate:", error?.message || error);
-      return await strapi2.documents(uid).findMany({
-        fields,
+        // Don't populate for now - just return the relation field IDs
+        // Frontend can use these IDs to display information
         populate: void 0,
         sort: `${config$1.sortOrderField}:asc`,
         filters,
         locale
       });
+      console.log(`Successfully fetched ${result.length} entries`);
+      return result;
+    } catch (error) {
+      console.error("Error fetching entries:", error?.message || error);
+      throw error;
     }
   },
   /**

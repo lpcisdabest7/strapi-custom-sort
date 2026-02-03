@@ -198,6 +198,9 @@ const getRelationFields = (contentType) => {
   return relationFields;
 };
 const getRelationDisplayValue = (relationItem) => {
+  if (typeof relationItem === "string" || typeof relationItem === "number") {
+    return String(relationItem);
+  }
   if (typeof relationItem !== "object" || relationItem === null) {
     return String(relationItem);
   }
