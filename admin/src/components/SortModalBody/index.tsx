@@ -181,6 +181,24 @@ const SortModalBody = ({
       const relationFields = getRelationFields(contentType);
       const shouldUseRelationFields = isMainFieldSystem && relationFields.length > 0;
 
+      // Debug logging (remove in production)
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[SortModalBody] Debug info:', {
+          mainField,
+          isMainFieldSystem,
+          relationFields,
+          shouldUseRelationFields,
+          firstEntry: entries[0],
+          firstEntryRelations: relationFields.reduce(
+            (acc, field) => {
+              acc[field] = entries[0]?.[field];
+              return acc;
+            },
+            {} as Record<string, any>
+          ),
+        });
+      }
+
       // Converts the data-models into view-models for the `<SortableList />` component.
       const sortableList: SortableList = entries.map((entry) => {
         let label: string;
@@ -204,12 +222,17 @@ const SortModalBody = ({
           // Format: "categoryName - templateName" or just one if the other is missing
           label = formatRelationLabel(entry, relationFields);
           if (!label || label.trim() === '') {
-            // If no label from relations, try to show at least one relation or documentId
-            const hasAnyRelation = relationFields.some((field) => entry[field]);
+            // If no label from relations, check if relations exist but are empty/null
+            const hasAnyRelation = relationFields.some((field) => {
+              const value = entry[field];
+              return value !== null && value !== undefined;
+            });
             if (hasAnyRelation) {
-              // At least one relation exists but couldn't format it, show documentId with relation info
+              // Relations exist but couldn't extract display value
+              // Try to show documentId with a note
               label = `Entry ${entry.documentId}`;
             } else {
+              // No relations at all
               label = `Entry ${entry.documentId}`;
             }
           }

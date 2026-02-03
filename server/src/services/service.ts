@@ -49,7 +49,8 @@ const service = ({ strapi }: { strapi: Core.Strapi }) => ({
     if (relationFields && relationFields.length > 0) {
       relationFields.forEach((field) => {
         // Populate relation fields completely to get all displayable fields
-        // Using true will populate all fields, allowing us to access title, name, etc.
+        // In Strapi v5, using true will populate all fields of the related entity
+        // This allows us to access title, name, and other display fields
         populate[field] = true;
       });
     }
