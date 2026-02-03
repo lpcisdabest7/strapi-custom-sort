@@ -32,9 +32,6 @@
       "default": "./dist/server/index.js"
     }
   },
-  "files": [
-    "dist"
-  ],
   "scripts": {
     "build": "strapi-plugin build",
     "postinstall": "npm run build"
