@@ -63,15 +63,39 @@ const getRelationDisplayValue = (relationItem: any): string => {
   if (typeof relationItem !== 'object' || relationItem === null) {
     return String(relationItem);
   }
-  // Try common display fields first
-  const displayFields = ['title', 'name', 'label', 'slug', 'code'];
+  // Try common display fields first (expanded list)
+  const displayFields = [
+    'title',
+    'name',
+    'label',
+    'slug',
+    'code',
+    'description',
+    'text',
+    'value',
+    'displayName',
+    'display_name',
+  ];
   for (const field of displayFields) {
-    if (relationItem[field] !== null && relationItem[field] !== undefined) {
-      return String(relationItem[field]);
+    const value = relationItem[field];
+    if (value !== null && value !== undefined && value !== '') {
+      return String(value);
+    }
+  }
+  // Try to find any string field that might be a display field
+  // (excluding system fields and objects)
+  for (const key in relationItem) {
+    if (
+      relationItem.hasOwnProperty(key) &&
+      typeof relationItem[key] === 'string' &&
+      relationItem[key] !== '' &&
+      !['documentId', 'id', 'createdAt', 'updatedAt', 'publishedAt'].includes(key)
+    ) {
+      return relationItem[key];
     }
   }
   // Fall back to documentId or id
-  return relationItem.documentId || relationItem.id || JSON.stringify(relationItem);
+  return relationItem.documentId || relationItem.id || 'Unknown';
 };
 
 /**
@@ -86,18 +110,22 @@ const formatRelationLabel = (entry: any, relationFields: string[]): string => {
       if (Array.isArray(relationValue)) {
         const arrayLabels = relationValue
           .map((item: any) => getRelationDisplayValue(item))
-          .filter((label: string) => label);
+          .filter((label: string) => label && label !== 'Unknown');
         if (arrayLabels.length > 0) {
           labels.push(arrayLabels.join(', '));
         }
       } else if (typeof relationValue === 'object' && relationValue !== null) {
-        labels.push(getRelationDisplayValue(relationValue));
-      } else {
+        const displayValue = getRelationDisplayValue(relationValue);
+        if (displayValue && displayValue !== 'Unknown') {
+          labels.push(displayValue);
+        }
+      } else if (relationValue !== null && relationValue !== undefined && relationValue !== '') {
+        // Handle primitive values (shouldn't happen with proper populate, but just in case)
         labels.push(String(relationValue));
       }
     }
   });
-  return labels.length > 0 ? labels.join('-') : '';
+  return labels.length > 0 ? labels.join(' - ') : '';
 };
 
 //
@@ -173,9 +201,17 @@ const SortModalBody = ({
           }
         } else if (shouldUseRelationFields && relationFields.length > 0) {
           // Use relation fields if mainField is a system field
+          // Format: "categoryName - templateName" or just one if the other is missing
           label = formatRelationLabel(entry, relationFields);
-          if (!label) {
-            label = `Entry ${entry.documentId}`;
+          if (!label || label.trim() === '') {
+            // If no label from relations, try to show at least one relation or documentId
+            const hasAnyRelation = relationFields.some((field) => entry[field]);
+            if (hasAnyRelation) {
+              // At least one relation exists but couldn't format it, show documentId with relation info
+              label = `Entry ${entry.documentId}`;
+            } else {
+              label = `Entry ${entry.documentId}`;
+            }
           }
         } else {
           // Last resort: use documentId

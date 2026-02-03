@@ -48,6 +48,8 @@ const service = ({ strapi }: { strapi: Core.Strapi }) => ({
     const populate: Record<string, any> = {};
     if (relationFields && relationFields.length > 0) {
       relationFields.forEach((field) => {
+        // Populate relation fields completely to get all displayable fields
+        // Using true will populate all fields, allowing us to access title, name, etc.
         populate[field] = true;
       });
     }
