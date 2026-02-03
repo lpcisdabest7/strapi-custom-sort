@@ -82,22 +82,31 @@ const controller = ({ strapi: strapi2 }) => ({
    * of the collection type with the given `uid` path parameter (GET request).
    */
   async fetchEntries(ctx) {
-    const { uid } = ctx.params;
-    const { mainField, filters, locale, relationFields } = ctx.request.query;
-    if (!mainField) {
-      ctx.badRequest("Missing required `mainField` query parameter.");
-      return;
+    try {
+      const { uid } = ctx.params;
+      const { mainField, filters, locale, relationFields } = ctx.request.query;
+      if (!mainField) {
+        ctx.badRequest("Missing required `mainField` query parameter.");
+        return;
+      }
+      const parsedRelationFields = relationFields ? relationFields.split(",") : void 0;
+      const service2 = strapi2.plugin("sortable-entries").service("service");
+      if (!service2) {
+        ctx.internalServerError("Service not found");
+        return;
+      }
+      const entries = await service2.fetchEntries({
+        uid,
+        mainField,
+        filters,
+        locale,
+        relationFields: parsedRelationFields
+      });
+      ctx.response.body = JSON.stringify(entries);
+    } catch (error) {
+      console.error("Error in fetchEntries:", error);
+      ctx.internalServerError(error instanceof Error ? error.message : "Unknown error");
     }
-    const parsedRelationFields = relationFields ? relationFields.split(",") : void 0;
-    const service2 = strapi2.plugin("sortable-entries").service("service");
-    const entries = await service2.fetchEntries({
-      uid,
-      mainField,
-      filters,
-      locale,
-      relationFields: parsedRelationFields
-    });
-    ctx.response.body = JSON.stringify(entries);
   },
   /**
    * Controller method for the route that updates the sort order
@@ -207,16 +216,33 @@ const service = ({ strapi: strapi2 }) => ({
     relationFields
   }) {
     const fields = ["documentId", mainField];
+    const validRelationFields = [];
+    const systemFields = ["createdBy", "updatedBy", "localizations", "locale"];
     if (relationFields && relationFields.length > 0) {
-      relationFields.forEach((field) => {
-        if (!fields.includes(field)) {
-          fields.push(field);
-        }
-      });
+      try {
+        const contentType = strapi2.get("content-types")?.get(uid);
+        const attributes = contentType?.attributes || {};
+        relationFields.forEach((field) => {
+          if (systemFields.includes(field)) {
+            return;
+          }
+          if (attributes[field]) {
+            const attribute = attributes[field];
+            if (attribute.type === "relation" || attribute.type === "media" || attribute.relation && typeof attribute.relation === "string") {
+              validRelationFields.push(field);
+              if (!fields.includes(field)) {
+                fields.push(field);
+              }
+            }
+          }
+        });
+      } catch (error) {
+        console.warn("Error validating relation fields:", error);
+      }
     }
     const populate = {};
-    if (relationFields && relationFields.length > 0) {
-      relationFields.forEach((field) => {
+    if (validRelationFields.length > 0) {
+      validRelationFields.forEach((field) => {
         populate[field] = true;
       });
     }

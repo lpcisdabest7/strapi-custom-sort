@@ -410,7 +410,15 @@ const SortModal = ({
       );
       setEntriesFetchState({ status: FetchStatus.Resolved, value: entries });
     } catch (error) {
-      console.error(`Failed to fetch data: ${error}`);
+      console.error(`Failed to fetch data:`, error);
+      if (error instanceof Error) {
+        console.error("Error details:", {
+          message: error.message,
+          stack: error.stack,
+          response: error.response?.data,
+          status: error.response?.status
+        });
+      }
       setEntriesFetchState({ status: FetchStatus.Failed });
     }
   };
