@@ -27,28 +27,48 @@ const hasSortOrderField = (input: any): input is SortableDocumentInput =>
   input.hasOwnProperty(config.sortOrderField);
 
 /**
- * Gets the minimum value constraint for the sortOrder field from the content type schema.
+ * Gets the minimum sort order value for a given content type.
+ * Checks content type attributes first, then plugin config, then defaults to 1.
  *
  * @param strapi - The Strapi instance.
  * @param uid - The content type UID.
  *
- * @returns The minimum value allowed for sortOrder, or undefined if no constraint exists.
+ * @returns The minimum sort order value (default: 1).
  */
-const getSortOrderMinValue = (strapi: Core.Strapi, uid: string): number | undefined => {
+const getMinSortOrder = (strapi: Core.Strapi, uid: string): number => {
+  // First, try to get min value from content type attributes
   try {
-    // In Strapi v5, access content type schema through the registry
-    const contentType = (strapi as any).get('content-types').get(uid);
-    if (!contentType || !contentType.attributes) {
-      return undefined;
+    const contentType = (strapi as any).get('content-types')?.get(uid);
+    if (contentType?.attributes?.[config.sortOrderField]?.min !== undefined) {
+      const rawMinSortOrderForUid = contentType.attributes[config.sortOrderField].min;
+      if (
+        typeof rawMinSortOrderForUid === 'number' &&
+        Number.isInteger(rawMinSortOrderForUid) &&
+        rawMinSortOrderForUid >= 0
+      ) {
+        return rawMinSortOrderForUid;
+      }
     }
-    const sortOrderAttribute = contentType.attributes[config.sortOrderField];
-    if (!sortOrderAttribute || sortOrderAttribute.type !== 'integer') {
-      return undefined;
-    }
-    return sortOrderAttribute.min;
   } catch {
-    return undefined;
+    // Ignore errors when accessing content type
   }
+
+  // Second, try to get from plugin config
+  try {
+    const rawMinSortOrder = (strapi as any).config?.get?.('plugin.sortable-entries.minSortOrder');
+    if (
+      typeof rawMinSortOrder === 'number' &&
+      Number.isInteger(rawMinSortOrder) &&
+      rawMinSortOrder >= 0
+    ) {
+      return rawMinSortOrder;
+    }
+  } catch {
+    // Ignore errors when accessing config
+  }
+
+  // Default to 1
+  return 1;
 };
 
 //
@@ -77,9 +97,8 @@ export const assignSortOrderValueMiddlewareCallback: Modules.Documents.Middlewar
           break;
         }
 
-        // Get the minimum value constraint for sortOrder field
-        const minValue = getSortOrderMinValue(strapi, context.uid);
-        const defaultSortOrder = minValue !== undefined && minValue > 0 ? minValue : 0;
+        // Get the minimum sort order value
+        const minSortOrder = getMinSortOrder(strapi, context.uid);
 
         // prettier-ignore
         const lastEntry = (await strapi
@@ -90,12 +109,8 @@ export const assignSortOrderValueMiddlewareCallback: Modules.Documents.Middlewar
         let nextSortOrder: number;
         if (lastSortOrder !== null && lastSortOrder !== undefined) {
           nextSortOrder = lastSortOrder + 1;
-          // Ensure nextSortOrder respects the min constraint
-          if (minValue !== undefined && nextSortOrder < minValue) {
-            nextSortOrder = minValue;
-          }
         } else {
-          nextSortOrder = defaultSortOrder;
+          nextSortOrder = minSortOrder;
         }
 
         data[config.sortOrderField] = nextSortOrder;

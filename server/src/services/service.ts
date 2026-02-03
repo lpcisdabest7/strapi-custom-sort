@@ -9,6 +9,55 @@ import type { Core } from '@strapi/strapi';
 import type { ContentTypeUID, DocumentID, DocumentIDList, Filters, Locale } from 'src/types';
 
 //
+// Helpers
+//
+
+/**
+ * Gets the minimum sort order value for a given content type.
+ * Checks content type attributes first, then plugin config, then defaults to 1.
+ *
+ * @param strapi - The Strapi instance.
+ * @param uid - The content type UID.
+ *
+ * @returns The minimum sort order value (default: 1).
+ */
+const getMinSortOrder = ({ strapi, uid }: { strapi: Core.Strapi; uid: ContentTypeUID }): number => {
+  // First, try to get min value from content type attributes
+  try {
+    const contentType = (strapi as any).get('content-types')?.get(uid);
+    if (contentType?.attributes?.[config.sortOrderField]?.min !== undefined) {
+      const rawMinSortOrderForUid = contentType.attributes[config.sortOrderField].min;
+      if (
+        typeof rawMinSortOrderForUid === 'number' &&
+        Number.isInteger(rawMinSortOrderForUid) &&
+        rawMinSortOrderForUid >= 0
+      ) {
+        return rawMinSortOrderForUid;
+      }
+    }
+  } catch {
+    // Ignore errors when accessing content type
+  }
+
+  // Second, try to get from plugin config
+  try {
+    const rawMinSortOrder = (strapi as any).config?.get?.('plugin.sortable-entries.minSortOrder');
+    if (
+      typeof rawMinSortOrder === 'number' &&
+      Number.isInteger(rawMinSortOrder) &&
+      rawMinSortOrder >= 0
+    ) {
+      return rawMinSortOrder;
+    }
+  } catch {
+    // Ignore errors when accessing config
+  }
+
+  // Default to 1
+  return 1;
+};
+
+//
 // Service
 //
 
@@ -130,12 +179,18 @@ const service = ({ strapi }: { strapi: Core.Strapi }) => ({
       throw new Error(`Expected to have the same number of document ID's as previously fetched.`);
     }
 
+    // Get the minimum sort order value for this content type
+    const minSortOrder = getMinSortOrder({ strapi, uid });
+
     // Map the new sorted list of document ID's to promises that reflect updating the corresponding database entries.
     const updatePromises = nextSortedDocumentIds
       .map((documentId: DocumentID, index: number) => {
         // At this point `prevSortedDocumentIds` and `nextSortedDocumentIds` are guaranteed to have the same length.
         // Therefore we can safely access the value at the same index.
         const prevEntry = prevSortedEntries[index];
+
+        // Calculate the actual sort order value (index + minSortOrder)
+        const nextSortIndex = index + minSortOrder;
 
         // To avoid unnecessary re-publishing of all entries when a new sort order is applied,
         // we only update entries when strictly necessary. An update occurs if one of these conditions is met:
@@ -147,13 +202,13 @@ const service = ({ strapi }: { strapi: Core.Strapi }) => ({
         //    - Example: A newly created entry where `sortOrderField` is `null`, `undefined` or an empty string.
         //      → Needs an initial sort index assigned.
         //
-        // 3. The entry’s stored `sortOrderField` is outdated due to earlier changes.
+        // 3. The entry's stored `sortOrderField` is outdated due to earlier changes.
         //    - Example: If an item was at index 4 with `sortOrderField = 4`, but another entry above it was deleted, its correct index is now 3.
         //      → Its stored value is stale and must be fixed.
         //
         // If none of these conditions apply we can skip the update.
         const hasSameDocumentId = prevEntry.documentId === documentId;
-        const hasSameSortIndex = prevEntry[config.sortOrderField] === index;
+        const hasSameSortIndex = prevEntry[config.sortOrderField] === nextSortIndex;
         if (hasSameDocumentId && hasSameSortIndex) {
           return null;
         }
@@ -162,7 +217,7 @@ const service = ({ strapi }: { strapi: Core.Strapi }) => ({
           documentId,
           locale,
           data: {
-            [config.sortOrderField]: index,
+            [config.sortOrderField]: nextSortIndex,
           },
         });
       })
