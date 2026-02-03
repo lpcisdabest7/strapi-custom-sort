@@ -86,19 +86,34 @@ const service = ({ strapi }: { strapi: Core.Strapi }) => ({
     locale: Locale | undefined;
     relationFields?: string[];
   }) {
-    // Start with only documentId and mainField
-    // Only add relation fields if they exist and are queryable
+    // Start with only documentId
+    // Only add mainField if it's NOT a relation field
     const fields: string[] = ['documentId'];
 
-    // Validate mainField exists in content type
+    // Validate mainField exists in content type and is NOT a relation field
     try {
       const contentType = (strapi as any).get('content-types')?.get(uid);
       const attributes = contentType?.attributes || {};
 
-      // Only add mainField if it exists in content type
-      if (attributes[mainField] || mainField === 'documentId') {
-        if (!fields.includes(mainField)) {
+      // Only add mainField if it exists and is NOT a relation field
+      if (mainField === 'documentId') {
+        // documentId is already in fields array, skip
+      } else if (attributes[mainField]) {
+        const attribute = attributes[mainField];
+        // Check if mainField is NOT a relation field
+        const isRelationField =
+          attribute.type === 'relation' ||
+          attribute.type === 'media' ||
+          (attribute.relation && typeof attribute.relation === 'string');
+
+        if (!isRelationField) {
+          // Only add non-relation fields to fields array
           fields.push(mainField);
+          console.log(`Added mainField to fields: ${mainField}`);
+        } else {
+          console.warn(
+            `MainField ${mainField} is a relation field, cannot be queried in fields parameter. Using documentId only.`
+          );
         }
       } else {
         console.warn(`MainField ${mainField} not found in content type, using documentId only`);
@@ -163,17 +178,43 @@ const service = ({ strapi }: { strapi: Core.Strapi }) => ({
 
     console.log('Fields to query:', fields);
     console.log('Valid relation fields for populate:', validRelationFields);
-
-    // For now, don't populate relation fields to avoid "Invalid key" errors
-    // Frontend will receive relation IDs and can fetch them separately if needed
-    // This is a safer approach that avoids Strapi v5 populate issues
+    console.log('Final fields array before query:', JSON.stringify(fields));
 
     try {
+      // Ensure fields array only contains valid, non-relation fields
+      const finalFields = fields.filter((field) => {
+        if (field === 'documentId') {
+          return true;
+        }
+        try {
+          const contentType = (strapi as any).get('content-types')?.get(uid);
+          const attributes = contentType?.attributes || {};
+          const attribute = attributes[field];
+          if (!attribute) {
+            console.warn(`Field ${field} not found in content type, removing from fields array`);
+            return false;
+          }
+          const isRelationField =
+            attribute.type === 'relation' ||
+            attribute.type === 'media' ||
+            (attribute.relation && typeof attribute.relation === 'string');
+          if (isRelationField) {
+            console.warn(`Field ${field} is a relation field, removing from fields array`);
+            return false;
+          }
+          return true;
+        } catch (error) {
+          console.warn(`Error validating field ${field}, removing from fields array:`, error);
+          return false;
+        }
+      });
+
+      console.log('Final validated fields array:', JSON.stringify(finalFields));
+
       const result = await strapi.documents(uid).findMany({
-        fields,
-        // Don't populate for now - just return the relation field IDs
-        // Frontend can use these IDs to display information
-        populate: undefined,
+        fields: finalFields,
+        // Populate only validated relation fields so frontend can display relation labels
+        populate: validRelationFields.length > 0 ? validRelationFields : undefined,
         sort: `${config.sortOrderField}:asc`,
         filters,
         locale,
@@ -183,6 +224,7 @@ const service = ({ strapi }: { strapi: Core.Strapi }) => ({
       return result;
     } catch (error: any) {
       console.error('Error fetching entries:', error?.message || error);
+      console.error('Error details:', error);
       throw error;
     }
   },

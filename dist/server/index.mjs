@@ -226,9 +226,17 @@ const service = ({ strapi: strapi2 }) => ({
     try {
       const contentType = strapi2.get("content-types")?.get(uid);
       const attributes = contentType?.attributes || {};
-      if (attributes[mainField] || mainField === "documentId") {
-        if (!fields.includes(mainField)) {
+      if (mainField === "documentId") {
+      } else if (attributes[mainField]) {
+        const attribute = attributes[mainField];
+        const isRelationField = attribute.type === "relation" || attribute.type === "media" || attribute.relation && typeof attribute.relation === "string";
+        if (!isRelationField) {
           fields.push(mainField);
+          console.log(`Added mainField to fields: ${mainField}`);
+        } else {
+          console.warn(
+            `MainField ${mainField} is a relation field, cannot be queried in fields parameter. Using documentId only.`
+          );
         }
       } else {
         console.warn(`MainField ${mainField} not found in content type, using documentId only`);
@@ -273,12 +281,36 @@ const service = ({ strapi: strapi2 }) => ({
     }
     console.log("Fields to query:", fields);
     console.log("Valid relation fields for populate:", validRelationFields);
+    console.log("Final fields array before query:", JSON.stringify(fields));
     try {
+      const finalFields = fields.filter((field) => {
+        if (field === "documentId") {
+          return true;
+        }
+        try {
+          const contentType = strapi2.get("content-types")?.get(uid);
+          const attributes = contentType?.attributes || {};
+          const attribute = attributes[field];
+          if (!attribute) {
+            console.warn(`Field ${field} not found in content type, removing from fields array`);
+            return false;
+          }
+          const isRelationField = attribute.type === "relation" || attribute.type === "media" || attribute.relation && typeof attribute.relation === "string";
+          if (isRelationField) {
+            console.warn(`Field ${field} is a relation field, removing from fields array`);
+            return false;
+          }
+          return true;
+        } catch (error) {
+          console.warn(`Error validating field ${field}, removing from fields array:`, error);
+          return false;
+        }
+      });
+      console.log("Final validated fields array:", JSON.stringify(finalFields));
       const result = await strapi2.documents(uid).findMany({
-        fields,
-        // Don't populate for now - just return the relation field IDs
-        // Frontend can use these IDs to display information
-        populate: void 0,
+        fields: finalFields,
+        // Populate only validated relation fields so frontend can display relation labels
+        populate: validRelationFields.length > 0 ? validRelationFields : void 0,
         sort: `${config$1.sortOrderField}:asc`,
         filters,
         locale
@@ -287,6 +319,7 @@ const service = ({ strapi: strapi2 }) => ({
       return result;
     } catch (error) {
       console.error("Error fetching entries:", error?.message || error);
+      console.error("Error details:", error);
       throw error;
     }
   },
