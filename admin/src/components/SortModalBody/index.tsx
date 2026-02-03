@@ -161,7 +161,7 @@ const SortModalBody = ({
           label = mainFieldValue !== null && mainFieldValue !== undefined ? String(mainFieldValue) : `Entry ${entry.documentId}`;
         }
         return {
-          id: entry.documentId,
+        id: entry.documentId,
           label,
         };
       });
