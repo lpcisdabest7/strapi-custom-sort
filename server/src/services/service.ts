@@ -87,22 +87,54 @@ const service = ({ strapi }: { strapi: Core.Strapi }) => ({
     relationFields?: string[];
   }) {
     const fields = ['documentId', mainField];
+
+    // Validate and filter relation fields to only include actual relation fields
+    const validRelationFields: string[] = [];
+    const systemFields = ['createdBy', 'updatedBy', 'localizations', 'locale'];
+
     if (relationFields && relationFields.length > 0) {
-      relationFields.forEach((field) => {
-        if (!fields.includes(field)) {
-          fields.push(field);
-        }
-      });
+      try {
+        const contentType = (strapi as any).get('content-types')?.get(uid);
+        const attributes = contentType?.attributes || {};
+
+        relationFields.forEach((field) => {
+          // Skip system fields
+          if (systemFields.includes(field)) {
+            return;
+          }
+
+          // Check if field exists in content type
+          if (attributes[field]) {
+            const attribute = attributes[field];
+            // Only include relation or media fields
+            if (
+              attribute.type === 'relation' ||
+              attribute.type === 'media' ||
+              (attribute.relation && typeof attribute.relation === 'string')
+            ) {
+              validRelationFields.push(field);
+              if (!fields.includes(field)) {
+                fields.push(field);
+              }
+            }
+          }
+        });
+      } catch (error) {
+        console.warn('Error validating relation fields:', error);
+        // If validation fails, don't populate any fields to avoid errors
+      }
     }
+
     const populate: Record<string, any> = {};
-    if (relationFields && relationFields.length > 0) {
-      relationFields.forEach((field) => {
+    if (validRelationFields.length > 0) {
+      validRelationFields.forEach((field) => {
         // Populate relation fields completely to get all displayable fields
         // In Strapi v5, using true will populate all fields of the related entity
         // This allows us to access title, name, and other display fields
         populate[field] = true;
       });
     }
+
     return await strapi.documents(uid).findMany({
       fields,
       populate: Object.keys(populate).length > 0 ? populate : undefined,
