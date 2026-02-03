@@ -97,15 +97,26 @@ const service = ({ strapi }: { strapi: Core.Strapi }) => ({
         const contentType = (strapi as any).get('content-types')?.get(uid);
         const attributes = contentType?.attributes || {};
 
+        console.log('Validating relation fields:', {
+          relationFields,
+          contentTypeAttributes: Object.keys(attributes),
+        });
+
         relationFields.forEach((field) => {
           // Skip system fields
           if (systemFields.includes(field)) {
+            console.log(`Skipping system field: ${field}`);
             return;
           }
 
           // Check if field exists in content type
           if (attributes[field]) {
             const attribute = attributes[field];
+            console.log(`Field ${field} attribute:`, {
+              type: attribute.type,
+              relation: attribute.relation,
+            });
+
             // Only include relation or media fields
             if (
               attribute.type === 'relation' ||
@@ -116,7 +127,12 @@ const service = ({ strapi }: { strapi: Core.Strapi }) => ({
               if (!fields.includes(field)) {
                 fields.push(field);
               }
+              console.log(`Added valid relation field: ${field}`);
+            } else {
+              console.log(`Field ${field} is not a relation field, type: ${attribute.type}`);
             }
+          } else {
+            console.log(`Field ${field} not found in content type attributes`);
           }
         });
       } catch (error) {
@@ -125,23 +141,56 @@ const service = ({ strapi }: { strapi: Core.Strapi }) => ({
       }
     }
 
-    const populate: Record<string, any> = {};
+    console.log('Valid relation fields after validation:', validRelationFields);
+
+    // Try to populate relation fields safely
+    // In Strapi v5, populate can be tricky, so we'll try a safer approach
+    let populate: Record<string, any> | undefined = undefined;
+
     if (validRelationFields.length > 0) {
-      validRelationFields.forEach((field) => {
-        // Populate relation fields completely to get all displayable fields
-        // In Strapi v5, using true will populate all fields of the related entity
-        // This allows us to access title, name, and other display fields
-        populate[field] = true;
-      });
+      populate = {};
+
+      // Try to populate each field individually with error handling
+      for (const field of validRelationFields) {
+        try {
+          // Use a simple populate structure that Strapi v5 understands
+          // Just populate the field without nested structure first
+          populate[field] = true;
+        } catch (error) {
+          console.warn(`Failed to configure populate for field ${field}:`, error);
+          // Skip this field if it causes issues
+        }
+      }
+
+      // If no valid populate fields, set to undefined
+      if (Object.keys(populate).length === 0) {
+        populate = undefined;
+      }
     }
 
-    return await strapi.documents(uid).findMany({
-      fields,
-      populate: Object.keys(populate).length > 0 ? populate : undefined,
-      sort: `${config.sortOrderField}:asc`,
-      filters,
-      locale,
-    });
+    try {
+      const result = await strapi.documents(uid).findMany({
+        fields,
+        populate,
+        sort: `${config.sortOrderField}:asc`,
+        filters,
+        locale,
+      });
+
+      return result;
+    } catch (error: any) {
+      // If populate fails, try without populate
+      console.warn('Error with populate, retrying without populate:', error?.message || error);
+
+      // Return entries without populate - frontend can handle the relation IDs
+      return await strapi.documents(uid).findMany({
+        fields,
+        populate: undefined,
+        sort: `${config.sortOrderField}:asc`,
+        filters,
+        locale,
+      });
+    }
   },
 
   /**

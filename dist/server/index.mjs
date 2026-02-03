@@ -95,6 +95,13 @@ const controller = ({ strapi: strapi2 }) => ({
         ctx.internalServerError("Service not found");
         return;
       }
+      console.log("Fetching entries with params:", {
+        uid,
+        mainField,
+        relationFields: parsedRelationFields,
+        filters,
+        locale
+      });
       const entries = await service2.fetchEntries({
         uid,
         mainField,
@@ -222,37 +229,72 @@ const service = ({ strapi: strapi2 }) => ({
       try {
         const contentType = strapi2.get("content-types")?.get(uid);
         const attributes = contentType?.attributes || {};
+        console.log("Validating relation fields:", {
+          relationFields,
+          contentTypeAttributes: Object.keys(attributes)
+        });
         relationFields.forEach((field) => {
           if (systemFields.includes(field)) {
+            console.log(`Skipping system field: ${field}`);
             return;
           }
           if (attributes[field]) {
             const attribute = attributes[field];
+            console.log(`Field ${field} attribute:`, {
+              type: attribute.type,
+              relation: attribute.relation
+            });
             if (attribute.type === "relation" || attribute.type === "media" || attribute.relation && typeof attribute.relation === "string") {
               validRelationFields.push(field);
               if (!fields.includes(field)) {
                 fields.push(field);
               }
+              console.log(`Added valid relation field: ${field}`);
+            } else {
+              console.log(`Field ${field} is not a relation field, type: ${attribute.type}`);
             }
+          } else {
+            console.log(`Field ${field} not found in content type attributes`);
           }
         });
       } catch (error) {
         console.warn("Error validating relation fields:", error);
       }
     }
-    const populate = {};
+    console.log("Valid relation fields after validation:", validRelationFields);
+    let populate = void 0;
     if (validRelationFields.length > 0) {
-      validRelationFields.forEach((field) => {
-        populate[field] = true;
+      populate = {};
+      for (const field of validRelationFields) {
+        try {
+          populate[field] = true;
+        } catch (error) {
+          console.warn(`Failed to configure populate for field ${field}:`, error);
+        }
+      }
+      if (Object.keys(populate).length === 0) {
+        populate = void 0;
+      }
+    }
+    try {
+      const result = await strapi2.documents(uid).findMany({
+        fields,
+        populate,
+        sort: `${config$1.sortOrderField}:asc`,
+        filters,
+        locale
+      });
+      return result;
+    } catch (error) {
+      console.warn("Error with populate, retrying without populate:", error?.message || error);
+      return await strapi2.documents(uid).findMany({
+        fields,
+        populate: void 0,
+        sort: `${config$1.sortOrderField}:asc`,
+        filters,
+        locale
       });
     }
-    return await strapi2.documents(uid).findMany({
-      fields,
-      populate: Object.keys(populate).length > 0 ? populate : void 0,
-      sort: `${config$1.sortOrderField}:asc`,
-      filters,
-      locale
-    });
   },
   /**
    * Fetches the entry with the highest value in the configured sort order field for a given content type.

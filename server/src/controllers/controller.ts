@@ -60,6 +60,14 @@ const controller = ({ strapi }: { strapi: Core.Strapi }) => ({
         return;
       }
 
+      console.log('Fetching entries with params:', {
+        uid,
+        mainField,
+        relationFields: parsedRelationFields,
+        filters,
+        locale,
+      });
+
       const entries = await service.fetchEntries({
         uid,
         mainField,
