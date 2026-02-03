@@ -60,9 +60,16 @@ const getRelationFields = (contentType: any): string[] => {
  * Tries to find a meaningful field (title, name, etc.) or falls back to documentId.
  */
 const getRelationDisplayValue = (relationItem: any): string => {
+  // Handle case where relationItem is just an ID (string or number)
+  // This happens when backend doesn't populate relation fields
+  if (typeof relationItem === 'string' || typeof relationItem === 'number') {
+    return String(relationItem);
+  }
+
   if (typeof relationItem !== 'object' || relationItem === null) {
     return String(relationItem);
   }
+
   // Try common display fields first (expanded list)
   const displayFields = [
     'title',

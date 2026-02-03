@@ -143,53 +143,26 @@ const service = ({ strapi }: { strapi: Core.Strapi }) => ({
 
     console.log('Valid relation fields after validation:', validRelationFields);
 
-    // Try to populate relation fields safely
-    // In Strapi v5, populate can be tricky, so we'll try a safer approach
-    let populate: Record<string, any> | undefined = undefined;
-
-    if (validRelationFields.length > 0) {
-      populate = {};
-
-      // Try to populate each field individually with error handling
-      for (const field of validRelationFields) {
-        try {
-          // Use a simple populate structure that Strapi v5 understands
-          // Just populate the field without nested structure first
-          populate[field] = true;
-        } catch (error) {
-          console.warn(`Failed to configure populate for field ${field}:`, error);
-          // Skip this field if it causes issues
-        }
-      }
-
-      // If no valid populate fields, set to undefined
-      if (Object.keys(populate).length === 0) {
-        populate = undefined;
-      }
-    }
+    // For now, don't populate relation fields to avoid "Invalid key" errors
+    // Frontend will receive relation IDs and can fetch them separately if needed
+    // This is a safer approach that avoids Strapi v5 populate issues
 
     try {
       const result = await strapi.documents(uid).findMany({
         fields,
-        populate,
-        sort: `${config.sortOrderField}:asc`,
-        filters,
-        locale,
-      });
-
-      return result;
-    } catch (error: any) {
-      // If populate fails, try without populate
-      console.warn('Error with populate, retrying without populate:', error?.message || error);
-
-      // Return entries without populate - frontend can handle the relation IDs
-      return await strapi.documents(uid).findMany({
-        fields,
+        // Don't populate for now - just return the relation field IDs
+        // Frontend can use these IDs to display information
         populate: undefined,
         sort: `${config.sortOrderField}:asc`,
         filters,
         locale,
       });
+
+      console.log(`Successfully fetched ${result.length} entries`);
+      return result;
+    } catch (error: any) {
+      console.error('Error fetching entries:', error?.message || error);
+      throw error;
     }
   },
 
