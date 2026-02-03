@@ -37,6 +37,7 @@
   },
   "scripts": {
     "build": "strapi-plugin build",
+    "prepare": "npm run build",
     "test": "vitest",
     "test:ts:back": "run -T tsc -p server/tsconfig.json",
     "test:ts:front": "run -T tsc -p admin/tsconfig.json",
