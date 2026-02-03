@@ -144,29 +144,52 @@ const SortModalBody = ({
       }
 
       // Check if mainField is a system field or doesn't exist in contentType attributes
-      const hasMainFieldInAttributes = contentType?.attributes && mainField in contentType.attributes;
-      const useRelationFields = isSystemField(mainField) || !hasMainFieldInAttributes;
-      const relationFields = useRelationFields ? getRelationFields(contentType) : [];
+      const hasMainFieldInAttributes =
+        contentType?.attributes && mainField in contentType.attributes;
+      const isMainFieldSystem = isSystemField(mainField);
+
+      // Only use relation fields if mainField is a system field AND we have relation fields available
+      // Otherwise, try to use mainField first
+      const relationFields = getRelationFields(contentType);
+      const shouldUseRelationFields = isMainFieldSystem && relationFields.length > 0;
 
       // Converts the data-models into view-models for the `<SortableList />` component.
       const sortableList: SortableList = entries.map((entry) => {
         let label: string;
-        if (useRelationFields && relationFields.length > 0) {
+
+        // First, try to use mainField if it's not a system field and has a value
+        if (!isMainFieldSystem) {
+          const mainFieldValue = entry[mainField];
+          if (mainFieldValue !== null && mainFieldValue !== undefined && mainFieldValue !== '') {
+            label = String(mainFieldValue);
+          } else if (shouldUseRelationFields && relationFields.length > 0) {
+            // Fallback to relation fields if mainField is empty
+            label = formatRelationLabel(entry, relationFields);
+            if (!label) {
+              label = `Entry ${entry.documentId}`;
+            }
+          } else {
+            label = `Entry ${entry.documentId}`;
+          }
+        } else if (shouldUseRelationFields && relationFields.length > 0) {
+          // Use relation fields if mainField is a system field
           label = formatRelationLabel(entry, relationFields);
           if (!label) {
             label = `Entry ${entry.documentId}`;
           }
         } else {
-          const mainFieldValue = entry[mainField];
-          label = mainFieldValue !== null && mainFieldValue !== undefined ? String(mainFieldValue) : `Entry ${entry.documentId}`;
+          // Last resort: use documentId
+          label = `Entry ${entry.documentId}`;
         }
+
         return {
-        id: entry.documentId,
+          id: entry.documentId,
           label,
         };
       });
 
-      const heading = useRelationFields && relationFields.length > 0 ? relationFields.join('-') : mainField;
+      const heading =
+        shouldUseRelationFields && relationFields.length > 0 ? relationFields.join('-') : mainField;
 
       return (
         <SortableListComponent
