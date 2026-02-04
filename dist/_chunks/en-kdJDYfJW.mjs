@@ -9,3 +9,4 @@ const en = {
 export {
   en as default
 };
+//# sourceMappingURL=en-kdJDYfJW.mjs.map

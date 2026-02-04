@@ -204,30 +204,29 @@ const SortModal = ({ uid, mainField, contentType, mode = 'global', label }: Sort
           // Extract target UID from attribute (e.g., "api::test-category.test-category")
           const targetUid = attribute.target;
 
-          // Try to find a sortable field in target collection
-          // Common display fields: name, title, label, slug
-          // Don't hardcode 'name' - try to find a valid field or use documentId
-          let sortField: string | undefined = undefined;
-          try {
-            // Try to get target contentType from Strapi
-            // Note: We can't access strapi directly here, so we'll try without sort first
-            // If that fails, we'll catch and retry with documentId
-          } catch {
-            // If we can't determine sort field, don't specify sort
-          }
-
           // Fetch entries from the target collection using Strapi's document API
           // Limit to 100 entries to avoid performance issues
-          // Don't specify sort if we're not sure the field exists
-          const params: any = {
+          // IMPORTANT: Do NOT specify sort parameter to avoid "Invalid key name" errors
+          // Strapi will use default sorting (usually by id or documentId)
+          const params = {
             pageSize: 100, // Limit to 100 options to avoid lag
+            // Explicitly do NOT include sort parameter
           };
 
-          // Only add sort if we have a valid field
-          // For now, skip sort to avoid "Invalid key name" error
-          // Strapi will use default sorting
-
           try {
+            // First, try to get the target contentType schema to find displayable fields
+            let targetContentType: any = null;
+            try {
+              const contentTypeResponse = await fetchClient.get(
+                `/content-type-builder/content-types/${targetUid}`
+              );
+              targetContentType = contentTypeResponse?.data?.data;
+            } catch (schemaError) {
+              // If we can't get schema, continue without it
+              console.warn('Could not fetch target contentType schema:', schemaError);
+            }
+
+            // Get all entries
             const targetEntries = await fetchClient.get(
               `/content-manager/collection-types/${targetUid}`,
               { params }
@@ -236,16 +235,85 @@ const SortModal = ({ uid, mainField, contentType, mode = 'global', label }: Sort
             // Handle different response formats
             const entries = targetEntries?.data?.results || targetEntries?.data || [];
 
+            // Find displayable fields from schema (string, text, email, etc.)
+            const displayableFieldNames: string[] = [];
+            if (targetContentType?.attributes) {
+              Object.keys(targetContentType.attributes).forEach((fieldName) => {
+                const field = targetContentType.attributes[fieldName];
+                // Include string-like fields that are good for display
+                if (
+                  ['string', 'text', 'email', 'enumeration'].includes(field.type) ||
+                  fieldName === 'name' ||
+                  fieldName === 'title' ||
+                  fieldName === 'label' ||
+                  fieldName === 'slug'
+                ) {
+                  displayableFieldNames.push(fieldName);
+                }
+              });
+            }
+
+            // Common field names to try (in priority order)
+            const commonDisplayFields = ['name', 'title', 'label', 'slug', 'code', 'value'];
+
             // Map to options format
             const options = entries.map((entry: any) => {
-              // Try to find a display field (name, title, etc.)
-              const displayValue =
-                entry.name ||
-                entry.title ||
-                entry.label ||
-                entry.slug ||
-                entry.documentId ||
-                String(entry.id);
+              let displayValue: string | null = null;
+
+              // First, try fields from schema (in order)
+              for (const fieldName of displayableFieldNames) {
+                const value = entry[fieldName];
+                if (value !== null && value !== undefined && value !== '') {
+                  displayValue = String(value);
+                  break;
+                }
+              }
+
+              // If no value found from schema fields, try common fields
+              if (!displayValue) {
+                for (const fieldName of commonDisplayFields) {
+                  const value = entry[fieldName];
+                  if (value !== null && value !== undefined && value !== '') {
+                    displayValue = String(value);
+                    break;
+                  }
+                }
+              }
+
+              // If still no value, try to find any non-empty string field
+              if (!displayValue) {
+                for (const [key, value] of Object.entries(entry)) {
+                  // Skip internal fields
+                  if (
+                    [
+                      'id',
+                      'documentId',
+                      'createdAt',
+                      'updatedAt',
+                      'publishedAt',
+                      'createdBy',
+                      'updatedBy',
+                    ].includes(key)
+                  ) {
+                    continue;
+                  }
+                  if (
+                    value !== null &&
+                    value !== undefined &&
+                    value !== '' &&
+                    typeof value === 'string'
+                  ) {
+                    displayValue = String(value);
+                    break;
+                  }
+                }
+              }
+
+              // Final fallback to documentId or id
+              if (!displayValue) {
+                displayValue = entry.documentId || String(entry.id);
+              }
+
               return {
                 id: entry.documentId || String(entry.id),
                 label: displayValue,
@@ -255,36 +323,10 @@ const SortModal = ({ uid, mainField, contentType, mode = 'global', label }: Sort
             setFilterOptions(options);
             return;
           } catch (error: any) {
-            // If sort failed, try without sort
-            if (error?.response?.status === 400 && params.sort) {
-              try {
-                const targetEntries = await fetchClient.get(
-                  `/content-manager/collection-types/${targetUid}`,
-                  { params: { pageSize: 100 } }
-                );
-                const entries = targetEntries?.data?.results || targetEntries?.data || [];
-                const options = entries.map((entry: any) => {
-                  const displayValue =
-                    entry.name ||
-                    entry.title ||
-                    entry.label ||
-                    entry.slug ||
-                    entry.documentId ||
-                    String(entry.id);
-                  return {
-                    id: entry.documentId || String(entry.id),
-                    label: displayValue,
-                  };
-                });
-                setFilterOptions(options);
-                return;
-              } catch (retryError) {
-                console.error('Failed to fetch relation options:', retryError);
-                setFilterOptions([]);
-                return;
-              }
-            }
-            throw error;
+            // If request failed, log error but don't retry with sort (we never use sort)
+            console.error('Failed to fetch relation options:', error);
+            setFilterOptions([]);
+            return;
           }
         }
 

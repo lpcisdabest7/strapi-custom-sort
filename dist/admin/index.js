@@ -455,22 +455,76 @@ const SortModal = ({ uid, mainField, contentType, mode = "global", label }) => {
         }
         if (attribute.type === "relation" && attribute.target) {
           const targetUid = attribute.target;
-          let sortField = void 0;
-          try {
-          } catch {
-          }
           const params = {
             pageSize: 100
             // Limit to 100 options to avoid lag
+            // Explicitly do NOT include sort parameter
           };
           try {
+            let targetContentType = null;
+            try {
+              const contentTypeResponse = await fetchClient.get(
+                `/content-type-builder/content-types/${targetUid}`
+              );
+              targetContentType = contentTypeResponse?.data?.data;
+            } catch (schemaError) {
+              console.warn("Could not fetch target contentType schema:", schemaError);
+            }
             const targetEntries = await fetchClient.get(
               `/content-manager/collection-types/${targetUid}`,
               { params }
             );
             const entries = targetEntries?.data?.results || targetEntries?.data || [];
+            const displayableFieldNames = [];
+            if (targetContentType?.attributes) {
+              Object.keys(targetContentType.attributes).forEach((fieldName2) => {
+                const field = targetContentType.attributes[fieldName2];
+                if (["string", "text", "email", "enumeration"].includes(field.type) || fieldName2 === "name" || fieldName2 === "title" || fieldName2 === "label" || fieldName2 === "slug") {
+                  displayableFieldNames.push(fieldName2);
+                }
+              });
+            }
+            const commonDisplayFields = ["name", "title", "label", "slug", "code", "value"];
             const options = entries.map((entry) => {
-              const displayValue = entry.name || entry.title || entry.label || entry.slug || entry.documentId || String(entry.id);
+              let displayValue = null;
+              for (const fieldName2 of displayableFieldNames) {
+                const value = entry[fieldName2];
+                if (value !== null && value !== void 0 && value !== "") {
+                  displayValue = String(value);
+                  break;
+                }
+              }
+              if (!displayValue) {
+                for (const fieldName2 of commonDisplayFields) {
+                  const value = entry[fieldName2];
+                  if (value !== null && value !== void 0 && value !== "") {
+                    displayValue = String(value);
+                    break;
+                  }
+                }
+              }
+              if (!displayValue) {
+                for (const [key, value] of Object.entries(entry)) {
+                  if ([
+                    "id",
+                    "documentId",
+                    "createdAt",
+                    "updatedAt",
+                    "publishedAt",
+                    "createdBy",
+                    "updatedBy"
+                  ].includes(key)) {
+                    continue;
+                  }
+                  if (value !== null && value !== void 0 && value !== "" && typeof value === "string") {
+                    displayValue = String(value);
+                    break;
+                  }
+                }
+              }
+              if (!displayValue) {
+                displayValue = entry.documentId || String(entry.id);
+              }
               return {
                 id: entry.documentId || String(entry.id),
                 label: displayValue
@@ -479,29 +533,9 @@ const SortModal = ({ uid, mainField, contentType, mode = "global", label }) => {
             setFilterOptions(options);
             return;
           } catch (error) {
-            if (error?.response?.status === 400 && params.sort) {
-              try {
-                const targetEntries = await fetchClient.get(
-                  `/content-manager/collection-types/${targetUid}`,
-                  { params: { pageSize: 100 } }
-                );
-                const entries = targetEntries?.data?.results || targetEntries?.data || [];
-                const options = entries.map((entry) => {
-                  const displayValue = entry.name || entry.title || entry.label || entry.slug || entry.documentId || String(entry.id);
-                  return {
-                    id: entry.documentId || String(entry.id),
-                    label: displayValue
-                  };
-                });
-                setFilterOptions(options);
-                return;
-              } catch (retryError) {
-                console.error("Failed to fetch relation options:", retryError);
-                setFilterOptions([]);
-                return;
-              }
-            }
-            throw error;
+            console.error("Failed to fetch relation options:", error);
+            setFilterOptions([]);
+            return;
           }
         }
         setFilterOptions([]);
@@ -858,3 +892,4 @@ const index = {
   }
 };
 module.exports = index;
+//# sourceMappingURL=index.js.map
