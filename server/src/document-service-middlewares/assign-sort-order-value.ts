@@ -9,22 +9,40 @@ import type { Core, Modules } from '@strapi/strapi';
 import type { AnyDocument } from 'src/types';
 
 /** Represents the input when creating a sortable document. */
+type SortFieldName = (typeof config.sortFieldCandidates)[number] | typeof config.sortOrderField;
+
 interface SortableDocumentInput {
-  [config.sortOrderField]: number | null;
   [key: string]: any;
 }
 
 /** Represents a sortable document from the database. */
 interface SortableDocument extends AnyDocument {
-  [config.sortOrderField]: number | null;
+  [key: string]: any;
 }
 
 //
 // Helper
 //
 
-const hasSortOrderField = (input: any): input is SortableDocumentInput =>
-  input.hasOwnProperty(config.sortOrderField);
+const resolveSortFieldForInput = (input: any): SortFieldName | null => {
+  if (!input || typeof input !== 'object') {
+    return null;
+  }
+
+  // Prefer any of the configured candidate fields that are present on the input
+  for (const candidate of config.sortFieldCandidates) {
+    if (Object.prototype.hasOwnProperty.call(input, candidate)) {
+      return candidate;
+    }
+  }
+
+  // Fallback to the default field name
+  if (Object.prototype.hasOwnProperty.call(input, config.sortOrderField)) {
+    return config.sortOrderField;
+  }
+
+  return null;
+};
 
 /**
  * Gets the minimum sort order value for a given content type.
@@ -35,12 +53,12 @@ const hasSortOrderField = (input: any): input is SortableDocumentInput =>
  *
  * @returns The minimum sort order value (default: 1).
  */
-const getMinSortOrder = (strapi: Core.Strapi, uid: string): number => {
+const getMinSortOrder = (strapi: Core.Strapi, uid: string, sortField: string): number => {
   // First, try to get min value from content type attributes
   try {
     const contentType = (strapi as any).get('content-types')?.get(uid);
-    if (contentType?.attributes?.[config.sortOrderField]?.min !== undefined) {
-      const rawMinSortOrderForUid = contentType.attributes[config.sortOrderField].min;
+    if (contentType?.attributes?.[sortField]?.min !== undefined) {
+      const rawMinSortOrderForUid = contentType.attributes[sortField].min;
       if (
         typeof rawMinSortOrderForUid === 'number' &&
         Number.isInteger(rawMinSortOrderForUid) &&
@@ -86,26 +104,31 @@ export const assignSortOrderValueMiddlewareCallback: Modules.Documents.Middlewar
     switch (context.action) {
       case DocumentAction.Create:
         const data = context.params.data;
-        if (!hasSortOrderField(data)) {
+        const sortField = resolveSortFieldForInput(data);
+
+        if (!sortField) {
           // The current content type does not have a sort order field, no need to auto-assign a new value.
           break;
         }
 
-        const sortOrder = data[config.sortOrderField];
+        const sortOrder = data[sortField];
         if (sortOrder || sortOrder === 0) {
           // The user has already provided a valid value for the sort order field, no need to auto-assign a new value.
           break;
         }
 
         // Get the minimum sort order value
-        const minSortOrder = getMinSortOrder(strapi, context.uid);
+        const minSortOrder = getMinSortOrder(strapi, context.uid, sortField);
 
         // prettier-ignore
         const lastEntry = (await strapi
           .service('plugin::sortable-entries.service')
-          .fetchLastEntry({uid: context.uid, locale: data.locale})) as SortableDocument | undefined;
+          // `locale` may not exist on all inputs; pass `undefined` when missing to satisfy typings.
+          .fetchLastEntry({ uid: context.uid, locale: (data as any)?.locale })) as
+          | SortableDocument
+          | undefined;
 
-        const lastSortOrder = lastEntry?.[config.sortOrderField];
+        const lastSortOrder = lastEntry?.[sortField];
         let nextSortOrder: number;
         if (lastSortOrder !== null && lastSortOrder !== undefined) {
           nextSortOrder = lastSortOrder + 1;
@@ -113,7 +136,7 @@ export const assignSortOrderValueMiddlewareCallback: Modules.Documents.Middlewar
           nextSortOrder = minSortOrder;
         }
 
-        data[config.sortOrderField] = nextSortOrder;
+        data[sortField] = nextSortOrder;
         break;
 
       case DocumentAction.Delete:

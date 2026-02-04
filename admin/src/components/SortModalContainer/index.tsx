@@ -21,13 +21,34 @@ const SortModalContainer = () => {
   }
 
   const { attributes } = contentType;
-  if (!(config.sortOrderField in attributes)) {
-    return null;
-  }
 
-  const sortOrderFieldAttributes = attributes[config.sortOrderField];
-  if (sortOrderFieldAttributes.type !== 'integer') {
-    console.warn(`${config.sortOrderField} needs to be of type integer.`);
+  // Try to find a usable sort field on this content type.
+  // We support multiple candidate field names (sort, sortOrder, order, orderIndex).
+  const resolveSortFieldForContentType = (): string | null => {
+    if (!attributes) {
+      return null;
+    }
+
+    // Prefer any of the configured candidate fields that exist and are integers.
+    for (const candidate of config.sortFieldCandidates) {
+      const attribute = attributes[candidate];
+      if (attribute && attribute.type === 'integer') {
+        return candidate;
+      }
+    }
+
+    // Fallback to the default config field if present and valid.
+    const fallbackAttr = attributes[config.sortOrderField];
+    if (fallbackAttr && fallbackAttr.type === 'integer') {
+      return config.sortOrderField;
+    }
+
+    return null;
+  };
+
+  const sortField = resolveSortFieldForContentType();
+  if (!sortField) {
+    // Current content type does not have any supported integer sort field.
     return null;
   }
 

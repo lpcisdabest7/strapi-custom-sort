@@ -10,6 +10,7 @@ import { Drag } from '@strapi/icons';
 import { FetchStatus } from '../../constants';
 import { prefixKey } from '../../utils/prefixKey';
 import SortModalBody from '../SortModalBody';
+import { config as pluginConfig } from '../../config';
 
 //
 // Types
@@ -79,6 +80,33 @@ const SortModal = ({ uid, mainField, contentType, mode = 'global', label }: Sort
   const [selectedFilterValue, setSelectedFilterValue] = useState<string>('');
   const [filterOptions, setFilterOptions] = useState<Array<{ id: string; label: string }>>([]);
   const [isLoadingOptions, setIsLoadingOptions] = useState(false);
+
+  /**
+   * Resolve which sort field is actually used for this content type.
+   *
+   * - We support multiple candidate field names (sort, sortOrder, order, orderIndex).
+   */
+  const resolvedSortField = useMemo(() => {
+    if (!contentType?.attributes) {
+      return pluginConfig.sortOrderField;
+    }
+
+    const attributes = contentType.attributes;
+
+    for (const candidate of pluginConfig.sortFieldCandidates) {
+      const attribute = attributes[candidate];
+      if (attribute && attribute.type === 'integer') {
+        return candidate;
+      }
+    }
+
+    const fallbackAttr = attributes[pluginConfig.sortOrderField];
+    if (fallbackAttr && fallbackAttr.type === 'integer') {
+      return pluginConfig.sortOrderField;
+    }
+
+    return pluginConfig.sortOrderField;
+  }, [contentType]);
 
   const initialParams = { filters: undefined, plugins: { i18n: { locale: undefined } } };
   const [queryParams, _] = useQueryParams(initialParams);

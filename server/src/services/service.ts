@@ -13,20 +13,62 @@ import type { ContentTypeUID, DocumentID, DocumentIDList, Filters, Locale } from
 //
 
 /**
+ * Resolves which sort field should be used for a given content type.
+ *
+ * - Tries all configured `sortFieldCandidates` and returns the first one that:
+ *   - exists on the content type and
+ *   - has type `integer`.
+ * - Falls back to the default `config.sortOrderField` when none match.
+ */
+const getSortFieldForContentType = ({
+  strapi,
+  uid,
+}: {
+  strapi: Core.Strapi;
+  uid: ContentTypeUID;
+}): string => {
+  try {
+    const contentType = (strapi as any).get('content-types')?.get(uid);
+    const attributes = contentType?.attributes || {};
+
+    for (const candidate of config.sortFieldCandidates) {
+      const attribute = attributes[candidate];
+      if (attribute && attribute.type === 'integer') {
+        return candidate;
+      }
+    }
+  } catch {
+    // Ignore errors when accessing content type
+  }
+
+  // Fallback to the original default configuration
+  return config.sortOrderField;
+};
+
+/**
  * Gets the minimum sort order value for a given content type.
  * Checks content type attributes first, then plugin config, then defaults to 1.
  *
  * @param strapi - The Strapi instance.
  * @param uid - The content type UID.
+ * @param sortField - The resolved sort field name for this content type.
  *
  * @returns The minimum sort order value (default: 1).
  */
-const getMinSortOrder = ({ strapi, uid }: { strapi: Core.Strapi; uid: ContentTypeUID }): number => {
+const getMinSortOrder = ({
+  strapi,
+  uid,
+  sortField,
+}: {
+  strapi: Core.Strapi;
+  uid: ContentTypeUID;
+  sortField: string;
+}): number => {
   // First, try to get min value from content type attributes
   try {
     const contentType = (strapi as any).get('content-types')?.get(uid);
-    if (contentType?.attributes?.[config.sortOrderField]?.min !== undefined) {
-      const rawMinSortOrderForUid = contentType.attributes[config.sortOrderField].min;
+    if (contentType?.attributes?.[sortField]?.min !== undefined) {
+      const rawMinSortOrderForUid = contentType.attributes[sortField].min;
       if (
         typeof rawMinSortOrderForUid === 'number' &&
         Number.isInteger(rawMinSortOrderForUid) &&
@@ -162,12 +204,15 @@ const service = ({ strapi }: { strapi: Core.Strapi }) => ({
         return !isRelationField;
       });
 
+      // Resolve which field to use for sorting for this content type
+      const sortField = getSortFieldForContentType({ strapi, uid });
+
       const result = await strapi.documents(uid).findMany({
         fields: finalFields,
         // Populate only validated relation fields so frontend can display relation labels
         // Note: Strapi will automatically optimize populate queries
         populate: validRelationFields.length > 0 ? validRelationFields : undefined,
-        sort: `${config.sortOrderField}:asc`,
+        sort: `${sortField}:asc`,
         filters,
         locale,
       });
@@ -191,8 +236,8 @@ const service = ({ strapi }: { strapi: Core.Strapi }) => ({
    */
   async fetchLastEntry({ uid, locale }: { uid: ContentTypeUID; locale: Locale | undefined }) {
     return await strapi.documents(uid).findFirst({
-      fields: ['documentId', config.sortOrderField],
-      sort: `${config.sortOrderField}:desc`,
+      fields: ['documentId', getSortFieldForContentType({ strapi, uid })],
+      sort: `${getSortFieldForContentType({ strapi, uid })}:desc`,
       locale,
     });
   },
@@ -222,9 +267,11 @@ const service = ({ strapi }: { strapi: Core.Strapi }) => ({
     // Fetch previous sort order of all entries to detect an actual change in position
     // when updating the entries below and to handle any active filters.
     // Only fetch entries that match the provided sortedDocumentIds to optimize performance
+    const sortField = getSortFieldForContentType({ strapi, uid });
+
     const prevSortedEntries = await strapi.documents(uid).findMany({
-      fields: ['documentId', config.sortOrderField],
-      sort: `${config.sortOrderField}:asc`,
+      fields: ['documentId', sortField],
+      sort: `${sortField}:asc`,
       locale,
       // If we have filters, apply them to limit the query scope
       ...(filters ? { filters } : {}),
@@ -251,7 +298,7 @@ const service = ({ strapi }: { strapi: Core.Strapi }) => ({
     }
 
     // Get the minimum sort order value for this content type
-    const minSortOrder = getMinSortOrder({ strapi, uid });
+    const minSortOrder = getMinSortOrder({ strapi, uid, sortField });
 
     // Map the new sorted list of document ID's to promises that reflect updating the corresponding database entries.
     const updatePromises = nextSortedDocumentIds
@@ -279,7 +326,7 @@ const service = ({ strapi }: { strapi: Core.Strapi }) => ({
         //
         // If none of these conditions apply we can skip the update.
         const hasSameDocumentId = prevEntry.documentId === documentId;
-        const hasSameSortIndex = prevEntry[config.sortOrderField] === nextSortIndex;
+        const hasSameSortIndex = prevEntry[sortField] === nextSortIndex;
         if (hasSameDocumentId && hasSameSortIndex) {
           return null;
         }
@@ -288,7 +335,7 @@ const service = ({ strapi }: { strapi: Core.Strapi }) => ({
           documentId,
           locale,
           data: {
-            [config.sortOrderField]: nextSortIndex,
+            [sortField]: nextSortIndex,
           },
         });
       })
@@ -331,9 +378,11 @@ const service = ({ strapi }: { strapi: Core.Strapi }) => ({
     }
 
     // Fetch only entries inside the current scope (filters) and sort them by sortOrder.
+    const sortField = getSortFieldForContentType({ strapi, uid });
+
     const scopedEntries = await strapi.documents(uid).findMany({
-      fields: ['documentId', config.sortOrderField],
-      sort: `${config.sortOrderField}:asc`,
+      fields: ['documentId', sortField],
+      sort: `${sortField}:asc`,
       filters,
       locale,
     });
@@ -350,13 +399,13 @@ const service = ({ strapi }: { strapi: Core.Strapi }) => ({
       );
     }
 
-    const minSortOrder = getMinSortOrder({ strapi, uid });
+    const minSortOrder = getMinSortOrder({ strapi, uid, sortField });
 
     const updatePromises = sortedDocumentIds.map((documentId, index) => {
       const prevEntry = scopedEntries.find((entry) => entry.documentId === documentId);
       const nextSortIndex = index + minSortOrder;
 
-      if (prevEntry && prevEntry[config.sortOrderField] === nextSortIndex) {
+      if (prevEntry && prevEntry[sortField] === nextSortIndex) {
         return null;
       }
 
@@ -364,7 +413,7 @@ const service = ({ strapi }: { strapi: Core.Strapi }) => ({
         documentId,
         locale,
         data: {
-          [config.sortOrderField]: nextSortIndex,
+          [sortField]: nextSortIndex,
         },
       });
     });

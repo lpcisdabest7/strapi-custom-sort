@@ -9,19 +9,45 @@ const config$1 = {
    * - Note: Unfortunatly there is no easy way to share the configuration between the admin- and server-side code,
    *         so we need to duplicate the config here for now.
    */
-  sortOrderField: "sortOrder"
+  /**
+   * Default sort field name.
+   *
+   * - Used as a fallback if no matching field is found on the content type.
+   */
+  sortOrderField: "sortOrder",
+  /**
+   * Candidate sort field names.
+   *
+   * - The plugin will look for the first field in this list that exists on the
+   *   current content type and is of type "integer".
+   * - This allows using different field names such as "sort", "order" or "orderIndex".
+   */
+  sortFieldCandidates: ["sort", "sortOrder", "order", "orderIndex"]
 };
 var DocumentAction = /* @__PURE__ */ ((DocumentAction2) => {
   DocumentAction2["Create"] = "create";
   DocumentAction2["Delete"] = "delete";
   return DocumentAction2;
 })(DocumentAction || {});
-const hasSortOrderField = (input) => input.hasOwnProperty(config$1.sortOrderField);
-const getMinSortOrder$1 = (strapi2, uid) => {
+const resolveSortFieldForInput = (input) => {
+  if (!input || typeof input !== "object") {
+    return null;
+  }
+  for (const candidate of config$1.sortFieldCandidates) {
+    if (Object.prototype.hasOwnProperty.call(input, candidate)) {
+      return candidate;
+    }
+  }
+  if (Object.prototype.hasOwnProperty.call(input, config$1.sortOrderField)) {
+    return config$1.sortOrderField;
+  }
+  return null;
+};
+const getMinSortOrder$1 = (strapi2, uid, sortField) => {
   try {
     const contentType = strapi2.get("content-types")?.get(uid);
-    if (contentType?.attributes?.[config$1.sortOrderField]?.min !== void 0) {
-      const rawMinSortOrderForUid = contentType.attributes[config$1.sortOrderField].min;
+    if (contentType?.attributes?.[sortField]?.min !== void 0) {
+      const rawMinSortOrderForUid = contentType.attributes[sortField].min;
       if (typeof rawMinSortOrderForUid === "number" && Number.isInteger(rawMinSortOrderForUid) && rawMinSortOrderForUid >= 0) {
         return rawMinSortOrderForUid;
       }
@@ -41,23 +67,24 @@ const assignSortOrderValueMiddlewareCallback = async (context, next) => {
   switch (context.action) {
     case DocumentAction.Create:
       const data = context.params.data;
-      if (!hasSortOrderField(data)) {
+      const sortField = resolveSortFieldForInput(data);
+      if (!sortField) {
         break;
       }
-      const sortOrder = data[config$1.sortOrderField];
+      const sortOrder = data[sortField];
       if (sortOrder || sortOrder === 0) {
         break;
       }
-      const minSortOrder = getMinSortOrder$1(strapi, context.uid);
-      const lastEntry = await strapi.service("plugin::sortable-entries.service").fetchLastEntry({ uid: context.uid, locale: data.locale });
-      const lastSortOrder = lastEntry?.[config$1.sortOrderField];
+      const minSortOrder = getMinSortOrder$1(strapi, context.uid, sortField);
+      const lastEntry = await strapi.service("plugin::sortable-entries.service").fetchLastEntry({ uid: context.uid, locale: data?.locale });
+      const lastSortOrder = lastEntry?.[sortField];
       let nextSortOrder;
       if (lastSortOrder !== null && lastSortOrder !== void 0) {
         nextSortOrder = lastSortOrder + 1;
       } else {
         nextSortOrder = minSortOrder;
       }
-      data[config$1.sortOrderField] = nextSortOrder;
+      data[sortField] = nextSortOrder;
       break;
     case DocumentAction.Delete:
       break;
@@ -224,11 +251,32 @@ const reorderSubsetInPlace = (array, newSubsetOrder) => {
   });
   return mutableArray;
 };
-const getMinSortOrder = ({ strapi: strapi2, uid }) => {
+const getSortFieldForContentType = ({
+  strapi: strapi2,
+  uid
+}) => {
   try {
     const contentType = strapi2.get("content-types")?.get(uid);
-    if (contentType?.attributes?.[config$1.sortOrderField]?.min !== void 0) {
-      const rawMinSortOrderForUid = contentType.attributes[config$1.sortOrderField].min;
+    const attributes = contentType?.attributes || {};
+    for (const candidate of config$1.sortFieldCandidates) {
+      const attribute = attributes[candidate];
+      if (attribute && attribute.type === "integer") {
+        return candidate;
+      }
+    }
+  } catch {
+  }
+  return config$1.sortOrderField;
+};
+const getMinSortOrder = ({
+  strapi: strapi2,
+  uid,
+  sortField
+}) => {
+  try {
+    const contentType = strapi2.get("content-types")?.get(uid);
+    if (contentType?.attributes?.[sortField]?.min !== void 0) {
+      const rawMinSortOrderForUid = contentType.attributes[sortField].min;
       if (typeof rawMinSortOrderForUid === "number" && Number.isInteger(rawMinSortOrderForUid) && rawMinSortOrderForUid >= 0) {
         return rawMinSortOrderForUid;
       }
@@ -305,12 +353,13 @@ const service = ({ strapi: strapi2 }) => ({
         const isRelationField = attribute.type === "relation" || attribute.type === "media" || attribute.relation && typeof attribute.relation === "string";
         return !isRelationField;
       });
+      const sortField = getSortFieldForContentType({ strapi: strapi2, uid });
       const result = await strapi2.documents(uid).findMany({
         fields: finalFields,
         // Populate only validated relation fields so frontend can display relation labels
         // Note: Strapi will automatically optimize populate queries
         populate: validRelationFields.length > 0 ? validRelationFields : void 0,
-        sort: `${config$1.sortOrderField}:asc`,
+        sort: `${sortField}:asc`,
         filters,
         locale
       });
@@ -332,8 +381,8 @@ const service = ({ strapi: strapi2 }) => ({
    */
   async fetchLastEntry({ uid, locale }) {
     return await strapi2.documents(uid).findFirst({
-      fields: ["documentId", config$1.sortOrderField],
-      sort: `${config$1.sortOrderField}:desc`,
+      fields: ["documentId", getSortFieldForContentType({ strapi: strapi2, uid })],
+      sort: `${getSortFieldForContentType({ strapi: strapi2, uid })}:desc`,
       locale
     });
   },
@@ -354,9 +403,10 @@ const service = ({ strapi: strapi2 }) => ({
     filters,
     locale
   }) {
+    const sortField = getSortFieldForContentType({ strapi: strapi2, uid });
     const prevSortedEntries = await strapi2.documents(uid).findMany({
-      fields: ["documentId", config$1.sortOrderField],
-      sort: `${config$1.sortOrderField}:asc`,
+      fields: ["documentId", sortField],
+      sort: `${sortField}:asc`,
       locale,
       // If we have filters, apply them to limit the query scope
       ...filters ? { filters } : {}
@@ -369,12 +419,12 @@ const service = ({ strapi: strapi2 }) => ({
     if (prevSortedDocumentIds.length !== nextSortedDocumentIds.length) {
       throw new Error(`Expected to have the same number of document ID's as previously fetched.`);
     }
-    const minSortOrder = getMinSortOrder({ strapi: strapi2, uid });
+    const minSortOrder = getMinSortOrder({ strapi: strapi2, uid, sortField });
     const updatePromises = nextSortedDocumentIds.map((documentId, index2) => {
       const prevEntry = prevSortedEntries[index2];
       const nextSortIndex = index2 + minSortOrder;
       const hasSameDocumentId = prevEntry.documentId === documentId;
-      const hasSameSortIndex = prevEntry[config$1.sortOrderField] === nextSortIndex;
+      const hasSameSortIndex = prevEntry[sortField] === nextSortIndex;
       if (hasSameDocumentId && hasSameSortIndex) {
         return null;
       }
@@ -382,7 +432,7 @@ const service = ({ strapi: strapi2 }) => ({
         documentId,
         locale,
         data: {
-          [config$1.sortOrderField]: nextSortIndex
+          [sortField]: nextSortIndex
         }
       });
     }).filter((optionalPromise) => !!optionalPromise);
@@ -413,9 +463,10 @@ const service = ({ strapi: strapi2 }) => ({
         locale
       });
     }
+    const sortField = getSortFieldForContentType({ strapi: strapi2, uid });
     const scopedEntries = await strapi2.documents(uid).findMany({
-      fields: ["documentId", config$1.sortOrderField],
-      sort: `${config$1.sortOrderField}:asc`,
+      fields: ["documentId", sortField],
+      sort: `${sortField}:asc`,
       filters,
       locale
     });
@@ -428,18 +479,18 @@ const service = ({ strapi: strapi2 }) => ({
         `Some document IDs do not belong to the current scoped filter: ${missingIds.join(", ")}`
       );
     }
-    const minSortOrder = getMinSortOrder({ strapi: strapi2, uid });
+    const minSortOrder = getMinSortOrder({ strapi: strapi2, uid, sortField });
     const updatePromises = sortedDocumentIds.map((documentId, index2) => {
       const prevEntry = scopedEntries.find((entry) => entry.documentId === documentId);
       const nextSortIndex = index2 + minSortOrder;
-      if (prevEntry && prevEntry[config$1.sortOrderField] === nextSortIndex) {
+      if (prevEntry && prevEntry[sortField] === nextSortIndex) {
         return null;
       }
       return strapi2.documents(uid).update({
         documentId,
         locale,
         data: {
-          [config$1.sortOrderField]: nextSortIndex
+          [sortField]: nextSortIndex
         }
       });
     });

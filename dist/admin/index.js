@@ -42,7 +42,20 @@ const config$1 = {
    * - Note: Unfortunatly there is no easy way to share the configuration between the admin- and server-side code,
    *         so we need to duplicate the config here for now.
    */
-  sortOrderField: "sortOrder"
+  /**
+   * Default sort field name.
+   *
+   * - Used as a fallback if no matching field is found on the content type.
+   */
+  sortOrderField: "sortOrder",
+  /**
+   * Candidate sort field names.
+   *
+   * - The admin UI will look for the first field in this list that exists on the
+   *   current content type and is of type "integer".
+   * - This allows using different field names such as "sort", "order" or "orderIndex".
+   */
+  sortFieldCandidates: ["sort", "sortOrder", "order", "orderIndex"]
 };
 var FetchStatus = /* @__PURE__ */ ((FetchStatus2) => {
   FetchStatus2["Initial"] = "initial";
@@ -368,6 +381,23 @@ const SortModal = ({ uid, mainField, contentType, mode = "global", label }) => {
   const [selectedFilterValue, setSelectedFilterValue] = react.useState("");
   const [filterOptions, setFilterOptions] = react.useState([]);
   const [isLoadingOptions, setIsLoadingOptions] = react.useState(false);
+  react.useMemo(() => {
+    if (!contentType?.attributes) {
+      return config$1.sortOrderField;
+    }
+    const attributes = contentType.attributes;
+    for (const candidate of config$1.sortFieldCandidates) {
+      const attribute = attributes[candidate];
+      if (attribute && attribute.type === "integer") {
+        return candidate;
+      }
+    }
+    const fallbackAttr = attributes[config$1.sortOrderField];
+    if (fallbackAttr && fallbackAttr.type === "integer") {
+      return config$1.sortOrderField;
+    }
+    return config$1.sortOrderField;
+  }, [contentType]);
   const initialParams = { filters: void 0, plugins: { i18n: { locale: void 0 } } };
   const [queryParams, _] = admin.useQueryParams(initialParams);
   const listViewFilters = queryParams.query.filters;
@@ -839,12 +869,24 @@ const SortModalContainer = () => {
     return null;
   }
   const { attributes } = contentType;
-  if (!(config$1.sortOrderField in attributes)) {
+  const resolveSortFieldForContentType = () => {
+    if (!attributes) {
+      return null;
+    }
+    for (const candidate of config$1.sortFieldCandidates) {
+      const attribute = attributes[candidate];
+      if (attribute && attribute.type === "integer") {
+        return candidate;
+      }
+    }
+    const fallbackAttr = attributes[config$1.sortOrderField];
+    if (fallbackAttr && fallbackAttr.type === "integer") {
+      return config$1.sortOrderField;
+    }
     return null;
-  }
-  const sortOrderFieldAttributes = attributes[config$1.sortOrderField];
-  if (sortOrderFieldAttributes.type !== "integer") {
-    console.warn(`${config$1.sortOrderField} needs to be of type integer.`);
+  };
+  const sortField = resolveSortFieldForContentType();
+  if (!sortField) {
     return null;
   }
   const { uid } = contentType;
