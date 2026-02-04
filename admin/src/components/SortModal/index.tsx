@@ -87,13 +87,16 @@ const SortModal = ({ uid, mainField, contentType, mode = 'global', label }: Sort
 
   /**
    * Builds a Strapi filter object from selected field and value.
-   * For relation fields in Strapi v5, need to filter by documentId nested.
+   * Supports relation fields (with documentId) and enumeration fields (with $eq).
    */
   const buildFilterFromSelection = (field: string, value: string): any => {
-    // Check if field is a relation field
-    const isRelationField = contentType?.attributes?.[field]?.type === 'relation';
+    const attribute = contentType?.attributes?.[field];
+    if (!attribute) {
+      return {};
+    }
 
-    if (isRelationField) {
+    // Handle relation fields
+    if (attribute.type === 'relation') {
       // For relation fields in Strapi v5, filter by documentId nested
       // Format: { field: { documentId: { $in: [value] } } }
       return {
@@ -105,7 +108,17 @@ const SortModal = ({ uid, mainField, contentType, mode = 'global', label }: Sort
       };
     }
 
-    // For non-relation fields, use $contains
+    // Handle enumeration fields
+    if (attribute.type === 'enumeration') {
+      // For enumeration fields, use $eq for exact match
+      return {
+        [field]: {
+          $eq: value,
+        },
+      };
+    }
+
+    // For other fields, use $contains
     return {
       [field]: {
         $contains: [value],
@@ -122,7 +135,7 @@ const SortModal = ({ uid, mainField, contentType, mode = 'global', label }: Sort
   }, [mode, selectedFilterField, selectedFilterValue, listViewFilters]);
 
   /**
-   * Fetches available options for a relation field.
+   * Fetches available options for a filterable field (relation or enumeration).
    */
   const fetchFilterOptions = useCallback(
     async (fieldName: string) => {
@@ -134,41 +147,55 @@ const SortModal = ({ uid, mainField, contentType, mode = 'global', label }: Sort
       setIsLoadingOptions(true);
       try {
         const attribute = contentType.attributes[fieldName];
-        if (attribute.type !== 'relation' || !attribute.target) {
-          setFilterOptions([]);
+
+        // Handle enumeration fields
+        if (attribute.type === 'enumeration' && attribute.enum) {
+          const enumValues = Array.isArray(attribute.enum) ? attribute.enum : [];
+          const options = enumValues.map((enumValue: string) => ({
+            id: enumValue,
+            label: enumValue,
+          }));
+          setFilterOptions(options);
           return;
         }
 
-        // Extract target UID from attribute (e.g., "api::test-category.test-category")
-        const targetUid = attribute.target;
+        // Handle relation fields
+        if (attribute.type === 'relation' && attribute.target) {
+          // Extract target UID from attribute (e.g., "api::test-category.test-category")
+          const targetUid = attribute.target;
 
-        // Fetch entries from the target collection using Strapi's document API
-        // Limit to 100 entries to avoid performance issues
-        const targetEntries = await fetchClient.get(
-          `/content-manager/collection-types/${targetUid}`,
-          {
-            params: {
-              pageSize: 100, // Limit to 100 options to avoid lag
-              sort: 'name:asc', // Sort by name if available
-            },
-          }
-        );
+          // Fetch entries from the target collection using Strapi's document API
+          // Limit to 100 entries to avoid performance issues
+          const targetEntries = await fetchClient.get(
+            `/content-manager/collection-types/${targetUid}`,
+            {
+              params: {
+                pageSize: 100, // Limit to 100 options to avoid lag
+                sort: 'name:asc', // Sort by name if available
+              },
+            }
+          );
 
-        // Handle different response formats
-        const entries = targetEntries?.data?.results || targetEntries?.data || [];
+          // Handle different response formats
+          const entries = targetEntries?.data?.results || targetEntries?.data || [];
 
-        // Map to options format
-        const options = entries.map((entry: any) => {
-          // Try to find a display field (name, title, etc.)
-          const displayValue =
-            entry.name || entry.title || entry.label || entry.documentId || String(entry.id);
-          return {
-            id: entry.documentId || String(entry.id),
-            label: displayValue,
-          };
-        });
+          // Map to options format
+          const options = entries.map((entry: any) => {
+            // Try to find a display field (name, title, etc.)
+            const displayValue =
+              entry.name || entry.title || entry.label || entry.documentId || String(entry.id);
+            return {
+              id: entry.documentId || String(entry.id),
+              label: displayValue,
+            };
+          });
 
-        setFilterOptions(options);
+          setFilterOptions(options);
+          return;
+        }
+
+        // Not a supported filterable field type
+        setFilterOptions([]);
       } catch (error) {
         console.error('Failed to fetch filter options:', error);
         setFilterOptions([]);
@@ -198,15 +225,16 @@ const SortModal = ({ uid, mainField, contentType, mode = 'global', label }: Sort
   };
 
   /**
-   * Gets all relation fields from contentType attributes.
+   * Gets all filterable fields (relation and enumeration) from contentType attributes.
    */
-  const getRelationFieldsMemo = useMemo(() => {
+  const getFilterableFieldsMemo = useMemo(() => {
     if (!contentType || !contentType.attributes) {
       return [];
     }
-    const relationFields: string[] = [];
+    const filterableFields: string[] = [];
     Object.keys(contentType.attributes).forEach((fieldName) => {
       const attribute = contentType.attributes[fieldName];
+      // Include relation fields
       if (
         attribute.type === 'relation' ||
         attribute.type === 'media' ||
@@ -214,10 +242,14 @@ const SortModal = ({ uid, mainField, contentType, mode = 'global', label }: Sort
           typeof attribute.type === 'string' &&
           attribute.type.includes('relation'))
       ) {
-        relationFields.push(fieldName);
+        filterableFields.push(fieldName);
+      }
+      // Include enumeration fields
+      else if (attribute.type === 'enumeration' && attribute.enum) {
+        filterableFields.push(fieldName);
       }
     });
-    return relationFields;
+    return filterableFields;
   }, [contentType]);
 
   /**
@@ -229,8 +261,14 @@ const SortModal = ({ uid, mainField, contentType, mode = 'global', label }: Sort
     try {
       const useRelationFields = isSystemField(mainField);
       const relationFieldsParam =
-        useRelationFields && getRelationFieldsMemo.length > 0
-          ? getRelationFieldsMemo.join(',')
+        useRelationFields && getFilterableFieldsMemo.length > 0
+          ? getFilterableFieldsMemo
+              .filter((field) => {
+                // Only include relation fields for populate, not enumeration
+                const attr = contentType?.attributes?.[field];
+                return attr?.type === 'relation' || attr?.type === 'media';
+              })
+              .join(',')
           : undefined;
 
       const { data: entries } = await fetchClient.get<Entries>(
@@ -258,7 +296,7 @@ const SortModal = ({ uid, mainField, contentType, mode = 'global', label }: Sort
       // We therefore don't need to trigger an extra notification here.
       setEntriesFetchState({ status: FetchStatus.Failed });
     }
-  }, [uid, mainField, mode, filters, locale, getRelationFieldsMemo, fetchClient]);
+  }, [uid, mainField, mode, filters, locale, getFilterableFieldsMemo, contentType, fetchClient]);
 
   // Fetch filter options when field selection changes
   useEffect(() => {
@@ -409,11 +447,21 @@ const SortModal = ({ uid, mainField, contentType, mode = 'global', label }: Sort
                     }}
                   >
                     <option value="">Select a field to filter by</option>
-                    {getRelationFieldsMemo.map((fieldName) => (
-                      <option key={fieldName} value={fieldName}>
-                        {fieldName}
-                      </option>
-                    ))}
+                    {getFilterableFieldsMemo.map((fieldName) => {
+                      const attr = contentType?.attributes?.[fieldName];
+                      const fieldType =
+                        attr?.type === 'enumeration'
+                          ? ' (enum)'
+                          : attr?.type === 'relation'
+                            ? ' (relation)'
+                            : '';
+                      return (
+                        <option key={fieldName} value={fieldName}>
+                          {fieldName}
+                          {fieldType}
+                        </option>
+                      );
+                    })}
                   </select>
                 </Box>
               </Box>

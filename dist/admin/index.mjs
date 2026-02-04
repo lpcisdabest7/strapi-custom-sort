@@ -370,13 +370,23 @@ const SortModal = ({ uid, mainField, contentType, mode = "global", label }) => {
   const listViewFilters = queryParams.query.filters;
   const locale = queryParams.query.plugins.i18n.locale;
   const buildFilterFromSelection = (field, value) => {
-    const isRelationField = contentType?.attributes?.[field]?.type === "relation";
-    if (isRelationField) {
+    const attribute = contentType?.attributes?.[field];
+    if (!attribute) {
+      return {};
+    }
+    if (attribute.type === "relation") {
       return {
         [field]: {
           documentId: {
             $in: [value]
           }
+        }
+      };
+    }
+    if (attribute.type === "enumeration") {
+      return {
+        [field]: {
+          $eq: value
         }
       };
     }
@@ -401,31 +411,40 @@ const SortModal = ({ uid, mainField, contentType, mode = "global", label }) => {
       setIsLoadingOptions(true);
       try {
         const attribute = contentType.attributes[fieldName];
-        if (attribute.type !== "relation" || !attribute.target) {
-          setFilterOptions([]);
+        if (attribute.type === "enumeration" && attribute.enum) {
+          const enumValues = Array.isArray(attribute.enum) ? attribute.enum : [];
+          const options = enumValues.map((enumValue) => ({
+            id: enumValue,
+            label: enumValue
+          }));
+          setFilterOptions(options);
           return;
         }
-        const targetUid = attribute.target;
-        const targetEntries = await fetchClient.get(
-          `/content-manager/collection-types/${targetUid}`,
-          {
-            params: {
-              pageSize: 100,
-              // Limit to 100 options to avoid lag
-              sort: "name:asc"
-              // Sort by name if available
+        if (attribute.type === "relation" && attribute.target) {
+          const targetUid = attribute.target;
+          const targetEntries = await fetchClient.get(
+            `/content-manager/collection-types/${targetUid}`,
+            {
+              params: {
+                pageSize: 100,
+                // Limit to 100 options to avoid lag
+                sort: "name:asc"
+                // Sort by name if available
+              }
             }
-          }
-        );
-        const entries = targetEntries?.data?.results || targetEntries?.data || [];
-        const options = entries.map((entry) => {
-          const displayValue = entry.name || entry.title || entry.label || entry.documentId || String(entry.id);
-          return {
-            id: entry.documentId || String(entry.id),
-            label: displayValue
-          };
-        });
-        setFilterOptions(options);
+          );
+          const entries = targetEntries?.data?.results || targetEntries?.data || [];
+          const options = entries.map((entry) => {
+            const displayValue = entry.name || entry.title || entry.label || entry.documentId || String(entry.id);
+            return {
+              id: entry.documentId || String(entry.id),
+              label: displayValue
+            };
+          });
+          setFilterOptions(options);
+          return;
+        }
+        setFilterOptions([]);
       } catch (error) {
         console.error("Failed to fetch filter options:", error);
         setFilterOptions([]);
@@ -449,24 +468,29 @@ const SortModal = ({ uid, mainField, contentType, mode = "global", label }) => {
     ];
     return systemFields.includes(fieldName);
   };
-  const getRelationFieldsMemo = useMemo(() => {
+  const getFilterableFieldsMemo = useMemo(() => {
     if (!contentType || !contentType.attributes) {
       return [];
     }
-    const relationFields = [];
+    const filterableFields = [];
     Object.keys(contentType.attributes).forEach((fieldName) => {
       const attribute = contentType.attributes[fieldName];
       if (attribute.type === "relation" || attribute.type === "media" || attribute.type && typeof attribute.type === "string" && attribute.type.includes("relation")) {
-        relationFields.push(fieldName);
+        filterableFields.push(fieldName);
+      } else if (attribute.type === "enumeration" && attribute.enum) {
+        filterableFields.push(fieldName);
       }
     });
-    return relationFields;
+    return filterableFields;
   }, [contentType]);
   const fetchEntries = useCallback(async () => {
     setEntriesFetchState({ status: FetchStatus.Loading });
     try {
       const useRelationFields = isSystemField2(mainField);
-      const relationFieldsParam = useRelationFields && getRelationFieldsMemo.length > 0 ? getRelationFieldsMemo.join(",") : void 0;
+      const relationFieldsParam = useRelationFields && getFilterableFieldsMemo.length > 0 ? getFilterableFieldsMemo.filter((field) => {
+        const attr = contentType?.attributes?.[field];
+        return attr?.type === "relation" || attr?.type === "media";
+      }).join(",") : void 0;
       const { data: entries } = await fetchClient.get(
         mode === "scoped" ? `/sortable-entries/fetch-entries-scoped/${uid}` : config.fetchEntriesRequest.path(uid),
         {
@@ -486,7 +510,7 @@ const SortModal = ({ uid, mainField, contentType, mode = "global", label }) => {
       }
       setEntriesFetchState({ status: FetchStatus.Failed });
     }
-  }, [uid, mainField, mode, filters, locale, getRelationFieldsMemo, fetchClient]);
+  }, [uid, mainField, mode, filters, locale, getFilterableFieldsMemo, contentType, fetchClient]);
   useEffect(() => {
     if (isOpen && mode === "scoped" && selectedFilterField) {
       fetchFilterOptions(selectedFilterField);
@@ -584,7 +608,14 @@ const SortModal = ({ uid, mainField, contentType, mode = "global", label }) => {
                 },
                 children: [
                   /* @__PURE__ */ jsx("option", { value: "", children: "Select a field to filter by" }),
-                  getRelationFieldsMemo.map((fieldName) => /* @__PURE__ */ jsx("option", { value: fieldName, children: fieldName }, fieldName))
+                  getFilterableFieldsMemo.map((fieldName) => {
+                    const attr = contentType?.attributes?.[fieldName];
+                    const fieldType = attr?.type === "enumeration" ? " (enum)" : attr?.type === "relation" ? " (relation)" : "";
+                    return /* @__PURE__ */ jsxs("option", { value: fieldName, children: [
+                      fieldName,
+                      fieldType
+                    ] }, fieldName);
+                  })
                 ]
               }
             ) })
@@ -702,4 +733,3 @@ const index = {
 export {
   index as default
 };
-//# sourceMappingURL=index.mjs.map
