@@ -390,6 +390,36 @@ const SortModal = ({ uid, mainField, contentType, mode = "global", label }) => {
         }
       };
     }
+    if (["integer", "biginteger", "float", "decimal"].includes(attribute.type)) {
+      const numValue = Number(value);
+      if (!isNaN(numValue)) {
+        return {
+          [field]: {
+            $eq: numValue
+          }
+        };
+      }
+      return {
+        [field]: {
+          $contains: [value]
+        }
+      };
+    }
+    if (attribute.type === "boolean") {
+      const boolValue = value === "true" || value === "1" || value === "yes";
+      return {
+        [field]: {
+          $eq: boolValue
+        }
+      };
+    }
+    if (["date", "datetime", "time", "timestamp"].includes(attribute.type)) {
+      return {
+        [field]: {
+          $eq: value
+        }
+      };
+    }
     return {
       [field]: {
         $contains: [value]
@@ -422,27 +452,54 @@ const SortModal = ({ uid, mainField, contentType, mode = "global", label }) => {
         }
         if (attribute.type === "relation" && attribute.target) {
           const targetUid = attribute.target;
-          const targetEntries = await fetchClient.get(
-            `/content-manager/collection-types/${targetUid}`,
-            {
-              params: {
-                pageSize: 100,
-                // Limit to 100 options to avoid lag
-                sort: "name:asc"
-                // Sort by name if available
+          let sortField = void 0;
+          try {
+          } catch {
+          }
+          const params = {
+            pageSize: 100
+            // Limit to 100 options to avoid lag
+          };
+          try {
+            const targetEntries = await fetchClient.get(
+              `/content-manager/collection-types/${targetUid}`,
+              { params }
+            );
+            const entries = targetEntries?.data?.results || targetEntries?.data || [];
+            const options = entries.map((entry) => {
+              const displayValue = entry.name || entry.title || entry.label || entry.slug || entry.documentId || String(entry.id);
+              return {
+                id: entry.documentId || String(entry.id),
+                label: displayValue
+              };
+            });
+            setFilterOptions(options);
+            return;
+          } catch (error) {
+            if (error?.response?.status === 400 && params.sort) {
+              try {
+                const targetEntries = await fetchClient.get(
+                  `/content-manager/collection-types/${targetUid}`,
+                  { params: { pageSize: 100 } }
+                );
+                const entries = targetEntries?.data?.results || targetEntries?.data || [];
+                const options = entries.map((entry) => {
+                  const displayValue = entry.name || entry.title || entry.label || entry.slug || entry.documentId || String(entry.id);
+                  return {
+                    id: entry.documentId || String(entry.id),
+                    label: displayValue
+                  };
+                });
+                setFilterOptions(options);
+                return;
+              } catch (retryError) {
+                console.error("Failed to fetch relation options:", retryError);
+                setFilterOptions([]);
+                return;
               }
             }
-          );
-          const entries = targetEntries?.data?.results || targetEntries?.data || [];
-          const options = entries.map((entry) => {
-            const displayValue = entry.name || entry.title || entry.label || entry.documentId || String(entry.id);
-            return {
-              id: entry.documentId || String(entry.id),
-              label: displayValue
-            };
-          });
-          setFilterOptions(options);
-          return;
+            throw error;
+          }
         }
         setFilterOptions([]);
       } catch (error) {
@@ -473,11 +530,47 @@ const SortModal = ({ uid, mainField, contentType, mode = "global", label }) => {
       return [];
     }
     const filterableFields = [];
+    const systemFields = [
+      "documentId",
+      "id",
+      "createdAt",
+      "updatedAt",
+      "publishedAt",
+      "createdBy",
+      "updatedBy",
+      "locale",
+      "localizations",
+      "strapi_stage",
+      "strapi_assignee"
+    ];
     Object.keys(contentType.attributes).forEach((fieldName) => {
+      if (systemFields.includes(fieldName)) {
+        return;
+      }
       const attribute = contentType.attributes[fieldName];
-      if (attribute.type === "relation" || attribute.type === "media" || attribute.type && typeof attribute.type === "string" && attribute.type.includes("relation")) {
-        filterableFields.push(fieldName);
-      } else if (attribute.type === "enumeration" && attribute.enum) {
+      if (!attribute || !attribute.type) {
+        return;
+      }
+      const filterableTypes = [
+        "relation",
+        "media",
+        "enumeration",
+        "string",
+        "text",
+        "richtext",
+        "email",
+        "password",
+        "integer",
+        "biginteger",
+        "float",
+        "decimal",
+        "date",
+        "time",
+        "datetime",
+        "timestamp",
+        "boolean"
+      ];
+      if (filterableTypes.includes(attribute.type) || attribute.type && typeof attribute.type === "string" && attribute.type.includes("relation")) {
         filterableFields.push(fieldName);
       }
     });
@@ -620,30 +713,61 @@ const SortModal = ({ uid, mainField, contentType, mode = "global", label }) => {
               }
             ) })
           ] }),
-          selectedFilterField && /* @__PURE__ */ jsxs(Box, { children: [
-            /* @__PURE__ */ jsx(Typography, { variant: "omega", fontWeight: "semiBold", as: "label", children: "Filter value" }),
-            /* @__PURE__ */ jsx(Box, { paddingTop: 2, children: /* @__PURE__ */ jsxs(
-              "select",
-              {
-                value: selectedFilterValue,
-                onChange: (e) => setSelectedFilterValue(e.target.value),
-                disabled: isSubmitting || isLoadingOptions || filterOptions.length === 0,
-                style: {
-                  width: "100%",
-                  padding: "8px 12px",
-                  borderRadius: "4px",
-                  border: "1px solid #dcdce4",
-                  fontSize: "14px",
-                  backgroundColor: "#ffffff",
-                  cursor: isSubmitting || isLoadingOptions || filterOptions.length === 0 ? "not-allowed" : "pointer"
-                },
-                children: [
-                  /* @__PURE__ */ jsx("option", { value: "", children: isLoadingOptions ? "Loading options..." : "Select a value" }),
-                  filterOptions.map((option) => /* @__PURE__ */ jsx("option", { value: option.id, children: option.label }, option.id))
-                ]
-              }
-            ) })
-          ] })
+          selectedFilterField && (() => {
+            const selectedAttr = contentType?.attributes?.[selectedFilterField];
+            const isRelationOrEnum = selectedAttr?.type === "relation" || selectedAttr?.type === "enumeration";
+            const needsTextInput = !isRelationOrEnum && filterOptions.length === 0;
+            return /* @__PURE__ */ jsxs(Box, { children: [
+              /* @__PURE__ */ jsx(Typography, { variant: "omega", fontWeight: "semiBold", as: "label", children: "Filter value" }),
+              /* @__PURE__ */ jsx(Box, { paddingTop: 2, children: needsTextInput ? (
+                // Text input for string, number, boolean, date, etc.
+                /* @__PURE__ */ jsx(
+                  "input",
+                  {
+                    type: selectedAttr?.type === "boolean" ? "text" : selectedAttr?.type === "date" || selectedAttr?.type === "datetime" ? "date" : ["integer", "biginteger", "float", "decimal"].includes(
+                      selectedAttr?.type || ""
+                    ) ? "number" : "text",
+                    value: selectedFilterValue,
+                    onChange: (e) => setSelectedFilterValue(e.target.value),
+                    disabled: isSubmitting,
+                    placeholder: selectedAttr?.type === "boolean" ? "Enter true/false" : selectedAttr?.type === "date" || selectedAttr?.type === "datetime" ? "Select date" : `Enter ${selectedAttr?.type || "value"}`,
+                    style: {
+                      width: "100%",
+                      padding: "8px 12px",
+                      borderRadius: "4px",
+                      border: "1px solid #dcdce4",
+                      fontSize: "14px",
+                      backgroundColor: "#ffffff",
+                      cursor: isSubmitting ? "not-allowed" : "text"
+                    }
+                  }
+                )
+              ) : (
+                // Select dropdown for relation and enumeration
+                /* @__PURE__ */ jsxs(
+                  "select",
+                  {
+                    value: selectedFilterValue,
+                    onChange: (e) => setSelectedFilterValue(e.target.value),
+                    disabled: isSubmitting || isLoadingOptions || filterOptions.length === 0,
+                    style: {
+                      width: "100%",
+                      padding: "8px 12px",
+                      borderRadius: "4px",
+                      border: "1px solid #dcdce4",
+                      fontSize: "14px",
+                      backgroundColor: "#ffffff",
+                      cursor: isSubmitting || isLoadingOptions || filterOptions.length === 0 ? "not-allowed" : "pointer"
+                    },
+                    children: [
+                      /* @__PURE__ */ jsx("option", { value: "", children: isLoadingOptions ? "Loading options..." : "Select a value" }),
+                      filterOptions.map((option) => /* @__PURE__ */ jsx("option", { value: option.id, children: option.label }, option.id))
+                    ]
+                  }
+                )
+              ) })
+            ] });
+          })()
         ] }),
         mode === "scoped" && (!selectedFilterField || !selectedFilterValue) ? /* @__PURE__ */ jsx(Box, { padding: 4, children: /* @__PURE__ */ jsx(Typography, { variant: "omega", textColor: "neutral600", children: "Please select a field and value to filter entries." }) }) : /* @__PURE__ */ jsx(
           SortModalBody,

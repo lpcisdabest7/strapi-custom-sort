@@ -87,7 +87,7 @@ const SortModal = ({ uid, mainField, contentType, mode = 'global', label }: Sort
 
   /**
    * Builds a Strapi filter object from selected field and value.
-   * Supports relation fields (with documentId) and enumeration fields (with $eq).
+   * Supports various field types: relation, enumeration, string, number, boolean, date, etc.
    */
   const buildFilterFromSelection = (field: string, value: string): any => {
     const attribute = contentType?.attributes?.[field];
@@ -118,7 +118,47 @@ const SortModal = ({ uid, mainField, contentType, mode = 'global', label }: Sort
       };
     }
 
-    // For other fields, use $contains
+    // Handle numeric fields (integer, biginteger, float, decimal)
+    if (['integer', 'biginteger', 'float', 'decimal'].includes(attribute.type)) {
+      const numValue = Number(value);
+      if (!isNaN(numValue)) {
+        return {
+          [field]: {
+            $eq: numValue,
+          },
+        };
+      }
+      // If not a valid number, use $contains as fallback
+      return {
+        [field]: {
+          $contains: [value],
+        },
+      };
+    }
+
+    // Handle boolean fields
+    if (attribute.type === 'boolean') {
+      const boolValue = value === 'true' || value === '1' || value === 'yes';
+      return {
+        [field]: {
+          $eq: boolValue,
+        },
+      };
+    }
+
+    // Handle date/datetime fields
+    if (['date', 'datetime', 'time', 'timestamp'].includes(attribute.type)) {
+      // For date fields, use $eq for exact match or $gte/$lte for range
+      // For now, use $eq
+      return {
+        [field]: {
+          $eq: value,
+        },
+      };
+    }
+
+    // Handle string/text fields (string, text, richtext, email, password)
+    // Use $contains for partial match
     return {
       [field]: {
         $contains: [value],
@@ -164,37 +204,92 @@ const SortModal = ({ uid, mainField, contentType, mode = 'global', label }: Sort
           // Extract target UID from attribute (e.g., "api::test-category.test-category")
           const targetUid = attribute.target;
 
+          // Try to find a sortable field in target collection
+          // Common display fields: name, title, label, slug
+          // Don't hardcode 'name' - try to find a valid field or use documentId
+          let sortField: string | undefined = undefined;
+          try {
+            // Try to get target contentType from Strapi
+            // Note: We can't access strapi directly here, so we'll try without sort first
+            // If that fails, we'll catch and retry with documentId
+          } catch {
+            // If we can't determine sort field, don't specify sort
+          }
+
           // Fetch entries from the target collection using Strapi's document API
           // Limit to 100 entries to avoid performance issues
-          const targetEntries = await fetchClient.get(
-            `/content-manager/collection-types/${targetUid}`,
-            {
-              params: {
-                pageSize: 100, // Limit to 100 options to avoid lag
-                sort: 'name:asc', // Sort by name if available
-              },
+          // Don't specify sort if we're not sure the field exists
+          const params: any = {
+            pageSize: 100, // Limit to 100 options to avoid lag
+          };
+
+          // Only add sort if we have a valid field
+          // For now, skip sort to avoid "Invalid key name" error
+          // Strapi will use default sorting
+
+          try {
+            const targetEntries = await fetchClient.get(
+              `/content-manager/collection-types/${targetUid}`,
+              { params }
+            );
+
+            // Handle different response formats
+            const entries = targetEntries?.data?.results || targetEntries?.data || [];
+
+            // Map to options format
+            const options = entries.map((entry: any) => {
+              // Try to find a display field (name, title, etc.)
+              const displayValue =
+                entry.name ||
+                entry.title ||
+                entry.label ||
+                entry.slug ||
+                entry.documentId ||
+                String(entry.id);
+              return {
+                id: entry.documentId || String(entry.id),
+                label: displayValue,
+              };
+            });
+
+            setFilterOptions(options);
+            return;
+          } catch (error: any) {
+            // If sort failed, try without sort
+            if (error?.response?.status === 400 && params.sort) {
+              try {
+                const targetEntries = await fetchClient.get(
+                  `/content-manager/collection-types/${targetUid}`,
+                  { params: { pageSize: 100 } }
+                );
+                const entries = targetEntries?.data?.results || targetEntries?.data || [];
+                const options = entries.map((entry: any) => {
+                  const displayValue =
+                    entry.name ||
+                    entry.title ||
+                    entry.label ||
+                    entry.slug ||
+                    entry.documentId ||
+                    String(entry.id);
+                  return {
+                    id: entry.documentId || String(entry.id),
+                    label: displayValue,
+                  };
+                });
+                setFilterOptions(options);
+                return;
+              } catch (retryError) {
+                console.error('Failed to fetch relation options:', retryError);
+                setFilterOptions([]);
+                return;
+              }
             }
-          );
-
-          // Handle different response formats
-          const entries = targetEntries?.data?.results || targetEntries?.data || [];
-
-          // Map to options format
-          const options = entries.map((entry: any) => {
-            // Try to find a display field (name, title, etc.)
-            const displayValue =
-              entry.name || entry.title || entry.label || entry.documentId || String(entry.id);
-            return {
-              id: entry.documentId || String(entry.id),
-              label: displayValue,
-            };
-          });
-
-          setFilterOptions(options);
-          return;
+            throw error;
+          }
         }
 
-        // Not a supported filterable field type
+        // For other field types (string, number, boolean, date, etc.), we can't fetch options
+        // User will need to type the value manually - show empty options
         setFilterOptions([]);
       } catch (error) {
         console.error('Failed to fetch filter options:', error);
@@ -225,27 +320,67 @@ const SortModal = ({ uid, mainField, contentType, mode = 'global', label }: Sort
   };
 
   /**
-   * Gets all filterable fields (relation and enumeration) from contentType attributes.
+   * Gets all filterable fields from contentType attributes.
+   * Includes: relation, enumeration, string, number, boolean, date, email, etc.
+   * Excludes: system fields and complex types that can't be easily filtered.
    */
   const getFilterableFieldsMemo = useMemo(() => {
     if (!contentType || !contentType.attributes) {
       return [];
     }
     const filterableFields: string[] = [];
+    const systemFields = [
+      'documentId',
+      'id',
+      'createdAt',
+      'updatedAt',
+      'publishedAt',
+      'createdBy',
+      'updatedBy',
+      'locale',
+      'localizations',
+      'strapi_stage',
+      'strapi_assignee',
+    ];
+
     Object.keys(contentType.attributes).forEach((fieldName) => {
+      // Skip system fields
+      if (systemFields.includes(fieldName)) {
+        return;
+      }
+
       const attribute = contentType.attributes[fieldName];
-      // Include relation fields
+      if (!attribute || !attribute.type) {
+        return;
+      }
+
+      // Include all filterable field types
+      const filterableTypes = [
+        'relation',
+        'media',
+        'enumeration',
+        'string',
+        'text',
+        'richtext',
+        'email',
+        'password',
+        'integer',
+        'biginteger',
+        'float',
+        'decimal',
+        'date',
+        'time',
+        'datetime',
+        'timestamp',
+        'boolean',
+      ];
+
       if (
-        attribute.type === 'relation' ||
-        attribute.type === 'media' ||
+        filterableTypes.includes(attribute.type) ||
         (attribute.type &&
           typeof attribute.type === 'string' &&
           attribute.type.includes('relation'))
       ) {
-        filterableFields.push(fieldName);
-      }
-      // Include enumeration fields
-      else if (attribute.type === 'enumeration' && attribute.enum) {
         filterableFields.push(fieldName);
       }
     });
@@ -465,41 +600,88 @@ const SortModal = ({ uid, mainField, contentType, mode = 'global', label }: Sort
                   </select>
                 </Box>
               </Box>
-              {selectedFilterField && (
-                <Box>
-                  <Typography variant="omega" fontWeight="semiBold" as="label">
-                    Filter value
-                  </Typography>
-                  <Box paddingTop={2}>
-                    <select
-                      value={selectedFilterValue}
-                      onChange={(e) => setSelectedFilterValue(e.target.value)}
-                      disabled={isSubmitting || isLoadingOptions || filterOptions.length === 0}
-                      style={{
-                        width: '100%',
-                        padding: '8px 12px',
-                        borderRadius: '4px',
-                        border: '1px solid #dcdce4',
-                        fontSize: '14px',
-                        backgroundColor: '#ffffff',
-                        cursor:
-                          isSubmitting || isLoadingOptions || filterOptions.length === 0
-                            ? 'not-allowed'
-                            : 'pointer',
-                      }}
-                    >
-                      <option value="">
-                        {isLoadingOptions ? 'Loading options...' : 'Select a value'}
-                      </option>
-                      {filterOptions.map((option) => (
-                        <option key={option.id} value={option.id}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  </Box>
-                </Box>
-              )}
+              {selectedFilterField &&
+                (() => {
+                  const selectedAttr = contentType?.attributes?.[selectedFilterField];
+                  const isRelationOrEnum =
+                    selectedAttr?.type === 'relation' || selectedAttr?.type === 'enumeration';
+                  const needsTextInput = !isRelationOrEnum && filterOptions.length === 0;
+
+                  return (
+                    <Box>
+                      <Typography variant="omega" fontWeight="semiBold" as="label">
+                        Filter value
+                      </Typography>
+                      <Box paddingTop={2}>
+                        {needsTextInput ? (
+                          // Text input for string, number, boolean, date, etc.
+                          <input
+                            type={
+                              selectedAttr?.type === 'boolean'
+                                ? 'text'
+                                : selectedAttr?.type === 'date' || selectedAttr?.type === 'datetime'
+                                  ? 'date'
+                                  : ['integer', 'biginteger', 'float', 'decimal'].includes(
+                                        selectedAttr?.type || ''
+                                      )
+                                    ? 'number'
+                                    : 'text'
+                            }
+                            value={selectedFilterValue}
+                            onChange={(e) => setSelectedFilterValue(e.target.value)}
+                            disabled={isSubmitting}
+                            placeholder={
+                              selectedAttr?.type === 'boolean'
+                                ? 'Enter true/false'
+                                : selectedAttr?.type === 'date' || selectedAttr?.type === 'datetime'
+                                  ? 'Select date'
+                                  : `Enter ${selectedAttr?.type || 'value'}`
+                            }
+                            style={{
+                              width: '100%',
+                              padding: '8px 12px',
+                              borderRadius: '4px',
+                              border: '1px solid #dcdce4',
+                              fontSize: '14px',
+                              backgroundColor: '#ffffff',
+                              cursor: isSubmitting ? 'not-allowed' : 'text',
+                            }}
+                          />
+                        ) : (
+                          // Select dropdown for relation and enumeration
+                          <select
+                            value={selectedFilterValue}
+                            onChange={(e) => setSelectedFilterValue(e.target.value)}
+                            disabled={
+                              isSubmitting || isLoadingOptions || filterOptions.length === 0
+                            }
+                            style={{
+                              width: '100%',
+                              padding: '8px 12px',
+                              borderRadius: '4px',
+                              border: '1px solid #dcdce4',
+                              fontSize: '14px',
+                              backgroundColor: '#ffffff',
+                              cursor:
+                                isSubmitting || isLoadingOptions || filterOptions.length === 0
+                                  ? 'not-allowed'
+                                  : 'pointer',
+                            }}
+                          >
+                            <option value="">
+                              {isLoadingOptions ? 'Loading options...' : 'Select a value'}
+                            </option>
+                            {filterOptions.map((option) => (
+                              <option key={option.id} value={option.id}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                      </Box>
+                    </Box>
+                  );
+                })()}
             </Box>
           )}
           {mode === 'scoped' && (!selectedFilterField || !selectedFilterValue) ? (
