@@ -1,10 +1,10 @@
 import { arrayMove } from '@dnd-kit/sortable';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import { useSearchParams } from 'react-router-dom';
 
 import { useFetchClient, useNotification, useQueryParams } from '@strapi/strapi/admin';
-import { Button, IconButton, Modal } from '@strapi/design-system';
+import { Button, IconButton, Modal, Box, Typography } from '@strapi/design-system';
 import { Drag } from '@strapi/icons';
 
 import { FetchStatus } from '../../constants';
@@ -15,7 +15,7 @@ import SortModalBody from '../SortModalBody';
 // Types
 //
 
-import type { UID } from '@strapi/strapi';
+import type { UID as StrapiUID } from '@strapi/strapi';
 import type { Entries, DragEndEvent, EntriesFetchState, UniqueIdentifier } from 'src/types';
 
 //
@@ -40,6 +40,16 @@ const config = {
 // Components
 //
 
+type SortMode = 'global' | 'scoped';
+
+interface SortModalProps {
+  uid: StrapiUID.ContentType;
+  mainField: string;
+  contentType: any;
+  mode?: SortMode;
+  label?: string;
+}
+
 /**
  * A modal component that retrieves entries from the current collection type,
  * presents them in a sortable list, and enables saving changes via a submit button.
@@ -47,16 +57,10 @@ const config = {
  * @param uid - The unique identifier of the content type which entries are sorted.
  * @param mainField - The displayed field of each entry in the collection type.
  * @param contentType - The content type configuration.
+ * @param mode - The sort mode: `"global"` for legacy behaviour or `"scoped"` for scoped sort within active filters.
+ * @param label - Optional label for the trigger button (mainly used for scoped mode).
  */
-const SortModal = ({
-  uid,
-  mainField,
-  contentType,
-}: {
-  uid: UID.ContentType;
-  mainField: string;
-  contentType: any;
-}) => {
+const SortModal = ({ uid, mainField, contentType, mode = 'global', label }: SortModalProps) => {
   const [isOpen, setIsOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
@@ -70,31 +74,110 @@ const SortModal = ({
     status: FetchStatus.Initial,
   });
 
+  // Scoped filter selection state
+  const [selectedFilterField, setSelectedFilterField] = useState<string>('');
+  const [selectedFilterValue, setSelectedFilterValue] = useState<string>('');
+  const [filterOptions, setFilterOptions] = useState<Array<{ id: string; label: string }>>([]);
+  const [isLoadingOptions, setIsLoadingOptions] = useState(false);
+
   const initialParams = { filters: undefined, plugins: { i18n: { locale: undefined } } };
   const [queryParams, _] = useQueryParams(initialParams);
-  const filters = queryParams.query.filters;
+  const listViewFilters = queryParams.query.filters;
   const locale = queryParams.query.plugins.i18n.locale;
 
   /**
-   * Gets all relation fields from contentType attributes.
+   * Builds a Strapi filter object from selected field and value.
+   * For relation fields in Strapi v5, need to filter by documentId nested.
    */
-  const getRelationFields = (): string[] => {
-    if (!contentType || !contentType.attributes) {
-      return [];
+  const buildFilterFromSelection = (field: string, value: string): any => {
+    // Check if field is a relation field
+    const isRelationField = contentType?.attributes?.[field]?.type === 'relation';
+
+    if (isRelationField) {
+      // For relation fields in Strapi v5, filter by documentId nested
+      // Format: { field: { documentId: { $in: [value] } } }
+      return {
+        [field]: {
+          documentId: {
+            $in: [value],
+          },
+        },
+      };
     }
-    const relationFields: string[] = [];
-    Object.keys(contentType.attributes).forEach((fieldName) => {
-      const attribute = contentType.attributes[fieldName];
-      if (
-        attribute.type === 'relation' ||
-        attribute.type === 'media' ||
-        (attribute.type && typeof attribute.type === 'string' && attribute.type.includes('relation'))
-      ) {
-        relationFields.push(fieldName);
-      }
-    });
-    return relationFields;
+
+    // For non-relation fields, use $contains
+    return {
+      [field]: {
+        $contains: [value],
+      },
+    };
   };
+
+  // Use selected filter for scoped mode, otherwise use list view filters
+  const filters = useMemo(() => {
+    if (mode === 'scoped' && selectedFilterField && selectedFilterValue) {
+      return buildFilterFromSelection(selectedFilterField, selectedFilterValue);
+    }
+    return listViewFilters;
+  }, [mode, selectedFilterField, selectedFilterValue, listViewFilters]);
+
+  /**
+   * Fetches available options for a relation field.
+   */
+  const fetchFilterOptions = useCallback(
+    async (fieldName: string) => {
+      if (!fieldName || !contentType?.attributes?.[fieldName]) {
+        setFilterOptions([]);
+        return;
+      }
+
+      setIsLoadingOptions(true);
+      try {
+        const attribute = contentType.attributes[fieldName];
+        if (attribute.type !== 'relation' || !attribute.target) {
+          setFilterOptions([]);
+          return;
+        }
+
+        // Extract target UID from attribute (e.g., "api::test-category.test-category")
+        const targetUid = attribute.target;
+
+        // Fetch entries from the target collection using Strapi's document API
+        // Limit to 100 entries to avoid performance issues
+        const targetEntries = await fetchClient.get(
+          `/content-manager/collection-types/${targetUid}`,
+          {
+            params: {
+              pageSize: 100, // Limit to 100 options to avoid lag
+              sort: 'name:asc', // Sort by name if available
+            },
+          }
+        );
+
+        // Handle different response formats
+        const entries = targetEntries?.data?.results || targetEntries?.data || [];
+
+        // Map to options format
+        const options = entries.map((entry: any) => {
+          // Try to find a display field (name, title, etc.)
+          const displayValue =
+            entry.name || entry.title || entry.label || entry.documentId || String(entry.id);
+          return {
+            id: entry.documentId || String(entry.id),
+            label: displayValue,
+          };
+        });
+
+        setFilterOptions(options);
+      } catch (error) {
+        console.error('Failed to fetch filter options:', error);
+        setFilterOptions([]);
+      } finally {
+        setIsLoadingOptions(false);
+      }
+    },
+    [contentType, fetchClient]
+  );
 
   /**
    * Checks if a field is a system field (not a user-defined field).
@@ -115,18 +198,45 @@ const SortModal = ({
   };
 
   /**
+   * Gets all relation fields from contentType attributes.
+   */
+  const getRelationFieldsMemo = useMemo(() => {
+    if (!contentType || !contentType.attributes) {
+      return [];
+    }
+    const relationFields: string[] = [];
+    Object.keys(contentType.attributes).forEach((fieldName) => {
+      const attribute = contentType.attributes[fieldName];
+      if (
+        attribute.type === 'relation' ||
+        attribute.type === 'media' ||
+        (attribute.type &&
+          typeof attribute.type === 'string' &&
+          attribute.type.includes('relation'))
+      ) {
+        relationFields.push(fieldName);
+      }
+    });
+    return relationFields;
+  }, [contentType]);
+
+  /**
    * Fetches the entries of the current collection type.
    */
-  const fetchEntries = async () => {
+  const fetchEntries = useCallback(async () => {
     setEntriesFetchState({ status: FetchStatus.Loading });
 
     try {
-      const relationFields = getRelationFields();
       const useRelationFields = isSystemField(mainField);
-      const relationFieldsParam = useRelationFields && relationFields.length > 0 ? relationFields.join(',') : undefined;
+      const relationFieldsParam =
+        useRelationFields && getRelationFieldsMemo.length > 0
+          ? getRelationFieldsMemo.join(',')
+          : undefined;
 
       const { data: entries } = await fetchClient.get<Entries>(
-        config.fetchEntriesRequest.path(uid),
+        mode === 'scoped'
+          ? `/sortable-entries/fetch-entries-scoped/${uid}`
+          : config.fetchEntriesRequest.path(uid),
         {
           params: { mainField, filters, locale, relationFields: relationFieldsParam },
         }
@@ -148,14 +258,39 @@ const SortModal = ({
       // We therefore don't need to trigger an extra notification here.
       setEntriesFetchState({ status: FetchStatus.Failed });
     }
-  };
+  }, [uid, mainField, mode, filters, locale, getRelationFieldsMemo, fetchClient]);
 
-  // Fetch the entries every time our modal is opened.
+  // Fetch filter options when field selection changes
   useEffect(() => {
-    if (isOpen) {
-      fetchEntries();
+    if (isOpen && mode === 'scoped' && selectedFilterField) {
+      fetchFilterOptions(selectedFilterField);
+    } else {
+      setFilterOptions([]);
+    }
+  }, [selectedFilterField, isOpen, mode, fetchFilterOptions]);
+
+  // Reset selections when modal closes
+  useEffect(() => {
+    if (!isOpen) {
+      setSelectedFilterField('');
+      setSelectedFilterValue('');
+      setFilterOptions([]);
     }
   }, [isOpen]);
+
+  // Fetch the entries when modal opens or filter changes
+  useEffect(() => {
+    if (isOpen) {
+      // For scoped mode, only fetch if filter is selected
+      if (mode === 'scoped') {
+        if (selectedFilterField && selectedFilterValue) {
+          fetchEntries();
+        }
+      } else {
+        fetchEntries();
+      }
+    }
+  }, [isOpen, mode, selectedFilterField, selectedFilterValue, fetchEntries]);
 
   /**
    * The callback for the drag-end event.
@@ -192,13 +327,18 @@ const SortModal = ({
       const entries = entriesFetchState.value;
       const sortedDocumentIds = entries.map((entry) => entry.documentId);
 
-      await fetchClient.post(config.updateSortOrderRequest.path(uid), {
-        data: {
-          sortedDocumentIds,
-          filters,
-          locale,
-        },
-      });
+      await fetchClient.post(
+        mode === 'scoped'
+          ? `/sortable-entries/update-sort-order-scoped/${uid}`
+          : config.updateSortOrderRequest.path(uid),
+        {
+          data: {
+            sortedDocumentIds,
+            filters,
+            locale,
+          },
+        }
+      );
 
       setIsOpen(false);
 
@@ -227,9 +367,15 @@ const SortModal = ({
   return (
     <Modal.Root open={isOpen} onOpenChange={setIsOpen}>
       <Modal.Trigger>
-        <IconButton>
-          <Drag />
-        </IconButton>
+        {mode === 'scoped' && label ? (
+          <Button variant="secondary" size="S">
+            {label}
+          </Button>
+        ) : (
+          <IconButton>
+            <Drag />
+          </IconButton>
+        )}
       </Modal.Trigger>
       <Modal.Content>
         <Modal.Header>
@@ -238,13 +384,91 @@ const SortModal = ({
           </Modal.Title>
         </Modal.Header>
         <Modal.Body>
-          <SortModalBody
-            entriesFetchState={entriesFetchState}
-            mainField={mainField}
-            contentType={contentType}
-            handleDragEnd={handleDragEnd}
-            disabled={isSubmitting}
-          />
+          {mode === 'scoped' && (
+            <Box paddingBottom={4}>
+              <Box paddingBottom={3}>
+                <Typography variant="omega" fontWeight="semiBold" as="label">
+                  Filter by field
+                </Typography>
+                <Box paddingTop={2}>
+                  <select
+                    value={selectedFilterField}
+                    onChange={(e) => {
+                      setSelectedFilterField(e.target.value);
+                      setSelectedFilterValue(''); // Reset value when field changes
+                    }}
+                    disabled={isSubmitting}
+                    style={{
+                      width: '100%',
+                      padding: '8px 12px',
+                      borderRadius: '4px',
+                      border: '1px solid #dcdce4',
+                      fontSize: '14px',
+                      backgroundColor: '#ffffff',
+                      cursor: isSubmitting ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    <option value="">Select a field to filter by</option>
+                    {getRelationFieldsMemo.map((fieldName) => (
+                      <option key={fieldName} value={fieldName}>
+                        {fieldName}
+                      </option>
+                    ))}
+                  </select>
+                </Box>
+              </Box>
+              {selectedFilterField && (
+                <Box>
+                  <Typography variant="omega" fontWeight="semiBold" as="label">
+                    Filter value
+                  </Typography>
+                  <Box paddingTop={2}>
+                    <select
+                      value={selectedFilterValue}
+                      onChange={(e) => setSelectedFilterValue(e.target.value)}
+                      disabled={isSubmitting || isLoadingOptions || filterOptions.length === 0}
+                      style={{
+                        width: '100%',
+                        padding: '8px 12px',
+                        borderRadius: '4px',
+                        border: '1px solid #dcdce4',
+                        fontSize: '14px',
+                        backgroundColor: '#ffffff',
+                        cursor:
+                          isSubmitting || isLoadingOptions || filterOptions.length === 0
+                            ? 'not-allowed'
+                            : 'pointer',
+                      }}
+                    >
+                      <option value="">
+                        {isLoadingOptions ? 'Loading options...' : 'Select a value'}
+                      </option>
+                      {filterOptions.map((option) => (
+                        <option key={option.id} value={option.id}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </Box>
+                </Box>
+              )}
+            </Box>
+          )}
+          {mode === 'scoped' && (!selectedFilterField || !selectedFilterValue) ? (
+            <Box padding={4}>
+              <Typography variant="omega" textColor="neutral600">
+                Please select a field and value to filter entries.
+              </Typography>
+            </Box>
+          ) : (
+            <SortModalBody
+              entriesFetchState={entriesFetchState}
+              mainField={mainField}
+              contentType={contentType}
+              handleDragEnd={handleDragEnd}
+              disabled={isSubmitting}
+            />
+          )}
         </Modal.Body>
         <Modal.Footer>
           <Modal.Close>

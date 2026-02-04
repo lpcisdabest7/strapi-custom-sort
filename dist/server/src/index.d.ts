@@ -19,6 +19,8 @@ declare const _default: {
         }) => {
             fetchEntries(ctx: import("koa").Context): Promise<void>;
             updateSortOrder(ctx: import("koa").Context): Promise<void>;
+            fetchEntriesScoped(ctx: import("koa").Context): Promise<any>;
+            updateSortOrderScoped(ctx: import("koa").Context): Promise<void>;
         };
     };
     routes: {
@@ -60,6 +62,12 @@ declare const _default: {
             } & {
                 [key: string]: any;
             })[]>;
+            updateSortOrderScoped({ uid, sortedDocumentIds, filters, locale, }: {
+                uid: import("@strapi/types/dist/uid").ContentType;
+                sortedDocumentIds: import("./types").DocumentIDList;
+                filters: any;
+                locale: any;
+            }): Promise<any>;
         };
     };
     contentTypes: {};

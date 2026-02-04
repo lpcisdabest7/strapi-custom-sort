@@ -1,6 +1,8 @@
 // https://docs.strapi.io/dev-docs/migration/v4-to-v5/additional-resources/helper-plugin#usecmeditviewdatamanager
 import { unstable_useContentManagerContext as useContentManagerContext } from '@strapi/strapi/admin';
 
+import { Button } from '@strapi/design-system';
+
 import { config } from '../../config';
 import SortModal from '../SortModal';
 
@@ -32,7 +34,20 @@ const SortModalContainer = () => {
   const { uid } = contentType;
   const { mainField } = layout.list.settings;
 
-  return <SortModal uid={uid} mainField={mainField} contentType={contentType} />;
+  return (
+    <>
+      {/* Legacy global sort modal (existing behaviour) – icon only */}
+      <SortModal uid={uid} mainField={mainField} contentType={contentType} mode="global" />
+      {/* New scoped sort modal: reindexes sortOrder only within the currently active filters */}
+      <SortModal
+        uid={uid}
+        mainField={mainField}
+        contentType={contentType}
+        mode="scoped"
+        label="Scoped sort (by filters)"
+      />
+    </>
+  );
 };
 
 export default SortModalContainer;

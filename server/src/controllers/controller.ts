@@ -60,14 +60,6 @@ const controller = ({ strapi }: { strapi: Core.Strapi }) => ({
         return;
       }
 
-      console.log('Fetching entries with params:', {
-        uid,
-        mainField,
-        relationFields: parsedRelationFields,
-        filters,
-        locale,
-      });
-
       const entries = await service.fetchEntries({
         uid,
         mainField,
@@ -108,6 +100,43 @@ const controller = ({ strapi }: { strapi: Core.Strapi }) => ({
     });
 
     // This will automatically set the `response.status` to 204 (HTTP No Content).
+    ctx.response.body = null;
+  },
+
+  /**
+   * Controller method for the route that fetches the entries (scoped mode).
+   * Scoped mode uses the same fetching behaviour as the legacy endpoint,
+   * but is wired to a dedicated route to keep the two features separated.
+   */
+  async fetchEntriesScoped(ctx: Context) {
+    return await (controller({ strapi }) as any).fetchEntries(ctx);
+  },
+
+  /**
+   * Controller method for the route that updates the sort order (scoped mode).
+   *
+   * In scoped mode we want `sortOrder` to be unique only within the active filter
+   * scope (for example per category or per relation), instead of globally across
+   * all entries of the collection type.
+   */
+  async updateSortOrderScoped(ctx: Context) {
+    const { uid } = ctx.params as UpdateSortOrderParams;
+    const { data } = ctx.request.body as UpdateSortOrderBody;
+    const { sortedDocumentIds, filters, locale } = data;
+
+    if (!sortedDocumentIds) {
+      ctx.badRequest('Missing required `sortedDocumentIds` in request body.');
+      return;
+    }
+
+    const service = strapi.plugin('sortable-entries').service('service');
+    await service.updateSortOrderScoped({
+      uid,
+      sortedDocumentIds,
+      filters,
+      locale,
+    });
+
     ctx.response.body = null;
   },
 });

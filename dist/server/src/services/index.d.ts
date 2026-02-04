@@ -24,6 +24,12 @@ declare const _default: {
         } & {
             [key: string]: any;
         })[]>;
+        updateSortOrderScoped({ uid, sortedDocumentIds, filters, locale, }: {
+            uid: import("@strapi/types/dist/uid").ContentType;
+            sortedDocumentIds: import("../types").DocumentIDList;
+            filters: any;
+            locale: any;
+        }): Promise<any>;
     };
 };
 export default _default;

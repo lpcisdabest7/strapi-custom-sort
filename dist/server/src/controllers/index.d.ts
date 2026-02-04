@@ -5,6 +5,8 @@ declare const _default: {
     }) => {
         fetchEntries(ctx: import("koa").Context): Promise<void>;
         updateSortOrder(ctx: import("koa").Context): Promise<void>;
+        fetchEntriesScoped(ctx: import("koa").Context): Promise<any>;
+        updateSortOrderScoped(ctx: import("koa").Context): Promise<void>;
     };
 };
 export default _default;

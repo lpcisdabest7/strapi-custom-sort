@@ -95,13 +95,6 @@ const controller = ({ strapi: strapi2 }) => ({
         ctx.internalServerError("Service not found");
         return;
       }
-      console.log("Fetching entries with params:", {
-        uid,
-        mainField,
-        relationFields: parsedRelationFields,
-        filters,
-        locale
-      });
       const entries = await service2.fetchEntries({
         uid,
         mainField,
@@ -135,6 +128,38 @@ const controller = ({ strapi: strapi2 }) => ({
       locale
     });
     ctx.response.body = null;
+  },
+  /**
+   * Controller method for the route that fetches the entries (scoped mode).
+   * Scoped mode uses the same fetching behaviour as the legacy endpoint,
+   * but is wired to a dedicated route to keep the two features separated.
+   */
+  async fetchEntriesScoped(ctx) {
+    return await controller({ strapi: strapi2 }).fetchEntries(ctx);
+  },
+  /**
+   * Controller method for the route that updates the sort order (scoped mode).
+   *
+   * In scoped mode we want `sortOrder` to be unique only within the active filter
+   * scope (for example per category or per relation), instead of globally across
+   * all entries of the collection type.
+   */
+  async updateSortOrderScoped(ctx) {
+    const { uid } = ctx.params;
+    const { data } = ctx.request.body;
+    const { sortedDocumentIds, filters, locale } = data;
+    if (!sortedDocumentIds) {
+      ctx.badRequest("Missing required `sortedDocumentIds` in request body.");
+      return;
+    }
+    const service2 = strapi2.plugin("sortable-entries").service("service");
+    await service2.updateSortOrderScoped({
+      uid,
+      sortedDocumentIds,
+      filters,
+      locale
+    });
+    ctx.response.body = null;
   }
 });
 const controllers = {
@@ -157,6 +182,22 @@ const admin = {
       method: "POST",
       path: "/update-sort-order/:uid",
       handler: "controller.updateSortOrder",
+      config: {
+        policies: []
+      }
+    },
+    {
+      method: "GET",
+      path: "/fetch-entries-scoped/:uid",
+      handler: "controller.fetchEntriesScoped",
+      config: {
+        policies: []
+      }
+    },
+    {
+      method: "POST",
+      path: "/update-sort-order-scoped/:uid",
+      handler: "controller.updateSortOrderScoped",
       config: {
         policies: []
       }
@@ -222,100 +263,57 @@ const service = ({ strapi: strapi2 }) => ({
     locale,
     relationFields
   }) {
-    const fields = ["documentId"];
+    let contentType;
     try {
-      const contentType = strapi2.get("content-types")?.get(uid);
-      const attributes = contentType?.attributes || {};
-      if (mainField === "documentId") {
-      } else if (attributes[mainField]) {
-        const attribute = attributes[mainField];
-        const isRelationField = attribute.type === "relation" || attribute.type === "media" || attribute.relation && typeof attribute.relation === "string";
-        if (!isRelationField) {
-          fields.push(mainField);
-          console.log(`Added mainField to fields: ${mainField}`);
-        } else {
-          console.warn(
-            `MainField ${mainField} is a relation field, cannot be queried in fields parameter. Using documentId only.`
-          );
-        }
-      } else {
-        console.warn(`MainField ${mainField} not found in content type, using documentId only`);
-      }
+      contentType = strapi2.get("content-types")?.get(uid);
     } catch (error) {
-      console.warn("Error validating mainField:", error);
+      throw new Error(`Content type ${uid} not found`);
+    }
+    const attributes = contentType?.attributes || {};
+    const fields = ["documentId"];
+    if (mainField !== "documentId" && attributes[mainField]) {
+      const attribute = attributes[mainField];
+      const isRelationField = attribute.type === "relation" || attribute.type === "media" || attribute.relation && typeof attribute.relation === "string";
+      if (!isRelationField) {
+        fields.push(mainField);
+      }
     }
     const validRelationFields = [];
     const systemFields = ["createdBy", "updatedBy", "localizations", "locale"];
     if (relationFields && relationFields.length > 0) {
-      try {
-        const contentType = strapi2.get("content-types")?.get(uid);
-        const attributes = contentType?.attributes || {};
-        console.log("Validating relation fields:", {
-          relationFields,
-          contentTypeAttributes: Object.keys(attributes)
-        });
-        relationFields.forEach((field) => {
-          if (systemFields.includes(field)) {
-            console.log(`Skipping system field: ${field}`);
-            return;
+      relationFields.forEach((field) => {
+        if (systemFields.includes(field)) {
+          return;
+        }
+        if (attributes[field]) {
+          const attribute = attributes[field];
+          if (attribute.type === "relation" || attribute.type === "media" || attribute.relation && typeof attribute.relation === "string") {
+            validRelationFields.push(field);
           }
-          if (attributes[field]) {
-            const attribute = attributes[field];
-            console.log(`Field ${field} attribute:`, {
-              type: attribute.type,
-              relation: attribute.relation
-            });
-            if (attribute.type === "relation" || attribute.type === "media" || attribute.relation && typeof attribute.relation === "string") {
-              validRelationFields.push(field);
-              console.log(`Added valid relation field for populate: ${field}`);
-            } else {
-              console.log(`Field ${field} is not a relation field, type: ${attribute.type}`);
-            }
-          } else {
-            console.log(`Field ${field} not found in content type attributes`);
-          }
-        });
-      } catch (error) {
-        console.warn("Error validating relation fields:", error);
-      }
+        }
+      });
     }
-    console.log("Fields to query:", fields);
-    console.log("Valid relation fields for populate:", validRelationFields);
-    console.log("Final fields array before query:", JSON.stringify(fields));
     try {
       const finalFields = fields.filter((field) => {
         if (field === "documentId") {
           return true;
         }
-        try {
-          const contentType = strapi2.get("content-types")?.get(uid);
-          const attributes = contentType?.attributes || {};
-          const attribute = attributes[field];
-          if (!attribute) {
-            console.warn(`Field ${field} not found in content type, removing from fields array`);
-            return false;
-          }
-          const isRelationField = attribute.type === "relation" || attribute.type === "media" || attribute.relation && typeof attribute.relation === "string";
-          if (isRelationField) {
-            console.warn(`Field ${field} is a relation field, removing from fields array`);
-            return false;
-          }
-          return true;
-        } catch (error) {
-          console.warn(`Error validating field ${field}, removing from fields array:`, error);
+        const attribute = attributes[field];
+        if (!attribute) {
           return false;
         }
+        const isRelationField = attribute.type === "relation" || attribute.type === "media" || attribute.relation && typeof attribute.relation === "string";
+        return !isRelationField;
       });
-      console.log("Final validated fields array:", JSON.stringify(finalFields));
       const result = await strapi2.documents(uid).findMany({
         fields: finalFields,
         // Populate only validated relation fields so frontend can display relation labels
+        // Note: Strapi will automatically optimize populate queries
         populate: validRelationFields.length > 0 ? validRelationFields : void 0,
         sort: `${config$1.sortOrderField}:asc`,
         filters,
         locale
       });
-      console.log(`Successfully fetched ${result.length} entries`);
       return result;
     } catch (error) {
       console.error("Error fetching entries:", error?.message || error);
@@ -359,7 +357,9 @@ const service = ({ strapi: strapi2 }) => ({
     const prevSortedEntries = await strapi2.documents(uid).findMany({
       fields: ["documentId", config$1.sortOrderField],
       sort: `${config$1.sortOrderField}:asc`,
-      locale
+      locale,
+      // If we have filters, apply them to limit the query scope
+      ...filters ? { filters } : {}
     });
     const prevSortedDocumentIds = prevSortedEntries.map((entry) => entry.documentId);
     let nextSortedDocumentIds = [...sortedDocumentIds];
@@ -387,6 +387,63 @@ const service = ({ strapi: strapi2 }) => ({
       });
     }).filter((optionalPromise) => !!optionalPromise);
     return await Promise.all(updatePromises);
+  },
+  /**
+   * Updates the sort order field in a scoped manner.
+   *
+   * In contrast to {@link updateSortOrder}, this method reindexes the `sortOrder`
+   * field only within the currently active filter scope (for example per category
+   * or per relation) and does not try to keep the values globally unique across
+   * the entire collection type.
+   *
+   * This allows having independent sort sequences per group, such as
+   * "sortOrder of styles per category" while leaving other groups untouched.
+   */
+  async updateSortOrderScoped({
+    uid,
+    sortedDocumentIds,
+    filters,
+    locale
+  }) {
+    if (!filters) {
+      return await service({ strapi: strapi2 }).updateSortOrder({
+        uid,
+        sortedDocumentIds,
+        filters,
+        locale
+      });
+    }
+    const scopedEntries = await strapi2.documents(uid).findMany({
+      fields: ["documentId", config$1.sortOrderField],
+      sort: `${config$1.sortOrderField}:asc`,
+      filters,
+      locale
+    });
+    const existingDocumentIds = scopedEntries.map((entry) => entry.documentId);
+    const missingIds = sortedDocumentIds.filter(
+      (documentId) => !existingDocumentIds.includes(documentId)
+    );
+    if (missingIds.length > 0) {
+      throw new Error(
+        `Some document IDs do not belong to the current scoped filter: ${missingIds.join(", ")}`
+      );
+    }
+    const minSortOrder = getMinSortOrder({ strapi: strapi2, uid });
+    const updatePromises = sortedDocumentIds.map((documentId, index2) => {
+      const prevEntry = scopedEntries.find((entry) => entry.documentId === documentId);
+      const nextSortIndex = index2 + minSortOrder;
+      if (prevEntry && prevEntry[config$1.sortOrderField] === nextSortIndex) {
+        return null;
+      }
+      return strapi2.documents(uid).update({
+        documentId,
+        locale,
+        data: {
+          [config$1.sortOrderField]: nextSortIndex
+        }
+      });
+    });
+    return await Promise.all(updatePromises.filter((optionalPromise) => !!optionalPromise));
   }
 });
 const services = {
@@ -407,3 +464,4 @@ const index = {
 export {
   index as default
 };
+//# sourceMappingURL=index.mjs.map

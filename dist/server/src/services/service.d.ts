@@ -56,5 +56,22 @@ declare const service: ({ strapi }: {
     } & {
         [key: string]: any;
     })[]>;
+    /**
+     * Updates the sort order field in a scoped manner.
+     *
+     * In contrast to {@link updateSortOrder}, this method reindexes the `sortOrder`
+     * field only within the currently active filter scope (for example per category
+     * or per relation) and does not try to keep the values globally unique across
+     * the entire collection type.
+     *
+     * This allows having independent sort sequences per group, such as
+     * "sortOrder of styles per category" while leaving other groups untouched.
+     */
+    updateSortOrderScoped({ uid, sortedDocumentIds, filters, locale, }: {
+        uid: ContentTypeUID;
+        sortedDocumentIds: DocumentIDList;
+        filters: Filters | undefined;
+        locale: Locale | undefined;
+    }): Promise<any>;
 };
 export default service;

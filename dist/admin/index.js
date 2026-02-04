@@ -353,11 +353,7 @@ const config = {
     path: (uid) => `/sortable-entries/update-sort-order/${uid}`
   }
 };
-const SortModal = ({
-  uid,
-  mainField,
-  contentType
-}) => {
+const SortModal = ({ uid, mainField, contentType, mode = "global", label }) => {
   const [isOpen, setIsOpen] = react.useState(false);
   const [isSubmitting, setIsSubmitting] = react.useState(false);
   const [searchParams, setSearchParams] = reactRouterDom.useSearchParams();
@@ -368,23 +364,80 @@ const SortModal = ({
   const [entriesFetchState, setEntriesFetchState] = react.useState({
     status: FetchStatus.Initial
   });
+  const [selectedFilterField, setSelectedFilterField] = react.useState("");
+  const [selectedFilterValue, setSelectedFilterValue] = react.useState("");
+  const [filterOptions, setFilterOptions] = react.useState([]);
+  const [isLoadingOptions, setIsLoadingOptions] = react.useState(false);
   const initialParams = { filters: void 0, plugins: { i18n: { locale: void 0 } } };
   const [queryParams, _] = admin.useQueryParams(initialParams);
-  const filters = queryParams.query.filters;
+  const listViewFilters = queryParams.query.filters;
   const locale = queryParams.query.plugins.i18n.locale;
-  const getRelationFields2 = () => {
-    if (!contentType || !contentType.attributes) {
-      return [];
+  const buildFilterFromSelection = (field, value) => {
+    const isRelationField = contentType?.attributes?.[field]?.type === "relation";
+    if (isRelationField) {
+      return {
+        [field]: {
+          documentId: {
+            $in: [value]
+          }
+        }
+      };
     }
-    const relationFields = [];
-    Object.keys(contentType.attributes).forEach((fieldName) => {
-      const attribute = contentType.attributes[fieldName];
-      if (attribute.type === "relation" || attribute.type === "media" || attribute.type && typeof attribute.type === "string" && attribute.type.includes("relation")) {
-        relationFields.push(fieldName);
+    return {
+      [field]: {
+        $contains: [value]
       }
-    });
-    return relationFields;
+    };
   };
+  const filters = react.useMemo(() => {
+    if (mode === "scoped" && selectedFilterField && selectedFilterValue) {
+      return buildFilterFromSelection(selectedFilterField, selectedFilterValue);
+    }
+    return listViewFilters;
+  }, [mode, selectedFilterField, selectedFilterValue, listViewFilters]);
+  const fetchFilterOptions = react.useCallback(
+    async (fieldName) => {
+      if (!fieldName || !contentType?.attributes?.[fieldName]) {
+        setFilterOptions([]);
+        return;
+      }
+      setIsLoadingOptions(true);
+      try {
+        const attribute = contentType.attributes[fieldName];
+        if (attribute.type !== "relation" || !attribute.target) {
+          setFilterOptions([]);
+          return;
+        }
+        const targetUid = attribute.target;
+        const targetEntries = await fetchClient.get(
+          `/content-manager/collection-types/${targetUid}`,
+          {
+            params: {
+              pageSize: 100,
+              // Limit to 100 options to avoid lag
+              sort: "name:asc"
+              // Sort by name if available
+            }
+          }
+        );
+        const entries = targetEntries?.data?.results || targetEntries?.data || [];
+        const options = entries.map((entry) => {
+          const displayValue = entry.name || entry.title || entry.label || entry.documentId || String(entry.id);
+          return {
+            id: entry.documentId || String(entry.id),
+            label: displayValue
+          };
+        });
+        setFilterOptions(options);
+      } catch (error) {
+        console.error("Failed to fetch filter options:", error);
+        setFilterOptions([]);
+      } finally {
+        setIsLoadingOptions(false);
+      }
+    },
+    [contentType, fetchClient]
+  );
   const isSystemField2 = (fieldName) => {
     const systemFields = [
       "documentId",
@@ -399,14 +452,26 @@ const SortModal = ({
     ];
     return systemFields.includes(fieldName);
   };
-  const fetchEntries = async () => {
+  const getRelationFieldsMemo = react.useMemo(() => {
+    if (!contentType || !contentType.attributes) {
+      return [];
+    }
+    const relationFields = [];
+    Object.keys(contentType.attributes).forEach((fieldName) => {
+      const attribute = contentType.attributes[fieldName];
+      if (attribute.type === "relation" || attribute.type === "media" || attribute.type && typeof attribute.type === "string" && attribute.type.includes("relation")) {
+        relationFields.push(fieldName);
+      }
+    });
+    return relationFields;
+  }, [contentType]);
+  const fetchEntries = react.useCallback(async () => {
     setEntriesFetchState({ status: FetchStatus.Loading });
     try {
-      const relationFields = getRelationFields2();
       const useRelationFields = isSystemField2(mainField);
-      const relationFieldsParam = useRelationFields && relationFields.length > 0 ? relationFields.join(",") : void 0;
+      const relationFieldsParam = useRelationFields && getRelationFieldsMemo.length > 0 ? getRelationFieldsMemo.join(",") : void 0;
       const { data: entries } = await fetchClient.get(
-        config.fetchEntriesRequest.path(uid),
+        mode === "scoped" ? `/sortable-entries/fetch-entries-scoped/${uid}` : config.fetchEntriesRequest.path(uid),
         {
           params: { mainField, filters, locale, relationFields: relationFieldsParam }
         }
@@ -424,12 +489,32 @@ const SortModal = ({
       }
       setEntriesFetchState({ status: FetchStatus.Failed });
     }
-  };
+  }, [uid, mainField, mode, filters, locale, getRelationFieldsMemo, fetchClient]);
   react.useEffect(() => {
-    if (isOpen) {
-      fetchEntries();
+    if (isOpen && mode === "scoped" && selectedFilterField) {
+      fetchFilterOptions(selectedFilterField);
+    } else {
+      setFilterOptions([]);
+    }
+  }, [selectedFilterField, isOpen, mode, fetchFilterOptions]);
+  react.useEffect(() => {
+    if (!isOpen) {
+      setSelectedFilterField("");
+      setSelectedFilterValue("");
+      setFilterOptions([]);
     }
   }, [isOpen]);
+  react.useEffect(() => {
+    if (isOpen) {
+      if (mode === "scoped") {
+        if (selectedFilterField && selectedFilterValue) {
+          fetchEntries();
+        }
+      } else {
+        fetchEntries();
+      }
+    }
+  }, [isOpen, mode, selectedFilterField, selectedFilterValue, fetchEntries]);
   const handleDragEnd = (activeID, overID) => {
     setEntriesFetchState((entriesFetchState2) => {
       if (entriesFetchState2.status !== FetchStatus.Resolved) {
@@ -451,13 +536,16 @@ const SortModal = ({
     try {
       const entries = entriesFetchState.value;
       const sortedDocumentIds = entries.map((entry) => entry.documentId);
-      await fetchClient.post(config.updateSortOrderRequest.path(uid), {
-        data: {
-          sortedDocumentIds,
-          filters,
-          locale
+      await fetchClient.post(
+        mode === "scoped" ? `/sortable-entries/update-sort-order-scoped/${uid}` : config.updateSortOrderRequest.path(uid),
+        {
+          data: {
+            sortedDocumentIds,
+            filters,
+            locale
+          }
         }
-      });
+      );
       setIsOpen(false);
       const timestamp = String(Date.now());
       searchParams.set("t", timestamp);
@@ -472,19 +560,74 @@ const SortModal = ({
   const isSubmitButtonDisabled = isSubmitting || entriesFetchState.status !== FetchStatus.Resolved;
   const isSubmitButtonLoading = isSubmitting;
   return /* @__PURE__ */ jsxRuntime.jsxs(designSystem.Modal.Root, { open: isOpen, onOpenChange: setIsOpen, children: [
-    /* @__PURE__ */ jsxRuntime.jsx(designSystem.Modal.Trigger, { children: /* @__PURE__ */ jsxRuntime.jsx(designSystem.IconButton, { children: /* @__PURE__ */ jsxRuntime.jsx(icons.Drag, {}) }) }),
+    /* @__PURE__ */ jsxRuntime.jsx(designSystem.Modal.Trigger, { children: mode === "scoped" && label ? /* @__PURE__ */ jsxRuntime.jsx(designSystem.Button, { variant: "secondary", size: "S", children: label }) : /* @__PURE__ */ jsxRuntime.jsx(designSystem.IconButton, { children: /* @__PURE__ */ jsxRuntime.jsx(icons.Drag, {}) }) }),
     /* @__PURE__ */ jsxRuntime.jsxs(designSystem.Modal.Content, { children: [
       /* @__PURE__ */ jsxRuntime.jsx(designSystem.Modal.Header, { children: /* @__PURE__ */ jsxRuntime.jsx(designSystem.Modal.Title, { children: /* @__PURE__ */ jsxRuntime.jsx(reactIntl.FormattedMessage, { id: prefixKey("title") }) }) }),
-      /* @__PURE__ */ jsxRuntime.jsx(designSystem.Modal.Body, { children: /* @__PURE__ */ jsxRuntime.jsx(
-        SortModalBody,
-        {
-          entriesFetchState,
-          mainField,
-          contentType,
-          handleDragEnd,
-          disabled: isSubmitting
-        }
-      ) }),
+      /* @__PURE__ */ jsxRuntime.jsxs(designSystem.Modal.Body, { children: [
+        mode === "scoped" && /* @__PURE__ */ jsxRuntime.jsxs(designSystem.Box, { paddingBottom: 4, children: [
+          /* @__PURE__ */ jsxRuntime.jsxs(designSystem.Box, { paddingBottom: 3, children: [
+            /* @__PURE__ */ jsxRuntime.jsx(designSystem.Typography, { variant: "omega", fontWeight: "semiBold", as: "label", children: "Filter by field" }),
+            /* @__PURE__ */ jsxRuntime.jsx(designSystem.Box, { paddingTop: 2, children: /* @__PURE__ */ jsxRuntime.jsxs(
+              "select",
+              {
+                value: selectedFilterField,
+                onChange: (e) => {
+                  setSelectedFilterField(e.target.value);
+                  setSelectedFilterValue("");
+                },
+                disabled: isSubmitting,
+                style: {
+                  width: "100%",
+                  padding: "8px 12px",
+                  borderRadius: "4px",
+                  border: "1px solid #dcdce4",
+                  fontSize: "14px",
+                  backgroundColor: "#ffffff",
+                  cursor: isSubmitting ? "not-allowed" : "pointer"
+                },
+                children: [
+                  /* @__PURE__ */ jsxRuntime.jsx("option", { value: "", children: "Select a field to filter by" }),
+                  getRelationFieldsMemo.map((fieldName) => /* @__PURE__ */ jsxRuntime.jsx("option", { value: fieldName, children: fieldName }, fieldName))
+                ]
+              }
+            ) })
+          ] }),
+          selectedFilterField && /* @__PURE__ */ jsxRuntime.jsxs(designSystem.Box, { children: [
+            /* @__PURE__ */ jsxRuntime.jsx(designSystem.Typography, { variant: "omega", fontWeight: "semiBold", as: "label", children: "Filter value" }),
+            /* @__PURE__ */ jsxRuntime.jsx(designSystem.Box, { paddingTop: 2, children: /* @__PURE__ */ jsxRuntime.jsxs(
+              "select",
+              {
+                value: selectedFilterValue,
+                onChange: (e) => setSelectedFilterValue(e.target.value),
+                disabled: isSubmitting || isLoadingOptions || filterOptions.length === 0,
+                style: {
+                  width: "100%",
+                  padding: "8px 12px",
+                  borderRadius: "4px",
+                  border: "1px solid #dcdce4",
+                  fontSize: "14px",
+                  backgroundColor: "#ffffff",
+                  cursor: isSubmitting || isLoadingOptions || filterOptions.length === 0 ? "not-allowed" : "pointer"
+                },
+                children: [
+                  /* @__PURE__ */ jsxRuntime.jsx("option", { value: "", children: isLoadingOptions ? "Loading options..." : "Select a value" }),
+                  filterOptions.map((option) => /* @__PURE__ */ jsxRuntime.jsx("option", { value: option.id, children: option.label }, option.id))
+                ]
+              }
+            ) })
+          ] })
+        ] }),
+        mode === "scoped" && (!selectedFilterField || !selectedFilterValue) ? /* @__PURE__ */ jsxRuntime.jsx(designSystem.Box, { padding: 4, children: /* @__PURE__ */ jsxRuntime.jsx(designSystem.Typography, { variant: "omega", textColor: "neutral600", children: "Please select a field and value to filter entries." }) }) : /* @__PURE__ */ jsxRuntime.jsx(
+          SortModalBody,
+          {
+            entriesFetchState,
+            mainField,
+            contentType,
+            handleDragEnd,
+            disabled: isSubmitting
+          }
+        )
+      ] }),
       /* @__PURE__ */ jsxRuntime.jsxs(designSystem.Modal.Footer, { children: [
         /* @__PURE__ */ jsxRuntime.jsx(designSystem.Modal.Close, { children: /* @__PURE__ */ jsxRuntime.jsx(designSystem.Button, { variant: "tertiary", children: /* @__PURE__ */ jsxRuntime.jsx(reactIntl.FormattedMessage, { id: prefixKey("cancel-button.title") }) }) }),
         /* @__PURE__ */ jsxRuntime.jsx(
@@ -517,7 +660,19 @@ const SortModalContainer = () => {
   }
   const { uid } = contentType;
   const { mainField } = layout.list.settings;
-  return /* @__PURE__ */ jsxRuntime.jsx(SortModal, { uid, mainField, contentType });
+  return /* @__PURE__ */ jsxRuntime.jsxs(jsxRuntime.Fragment, { children: [
+    /* @__PURE__ */ jsxRuntime.jsx(SortModal, { uid, mainField, contentType, mode: "global" }),
+    /* @__PURE__ */ jsxRuntime.jsx(
+      SortModal,
+      {
+        uid,
+        mainField,
+        contentType,
+        mode: "scoped",
+        label: "Scoped sort (by filters)"
+      }
+    )
+  ] });
 };
 const index = {
   register(app) {
@@ -548,3 +703,4 @@ const index = {
   }
 };
 module.exports = index;
+//# sourceMappingURL=index.js.map
