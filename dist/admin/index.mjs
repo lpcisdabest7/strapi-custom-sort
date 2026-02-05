@@ -4,7 +4,7 @@ import { useNotification, useFetchClient, useQueryParams, unstable_useContentMan
 import { useSortable, sortableKeyboardCoordinates, SortableContext, verticalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
 import { useIntl, FormattedMessage } from "react-intl";
 import { useSearchParams } from "react-router-dom";
-import { Box, Flex, Typography, EmptyStateLayout, Loader, Modal, Button, IconButton } from "@strapi/design-system";
+import { Box, Flex, Typography, EmptyStateLayout, Loader, Modal, Button, IconButton, SingleSelect, SingleSelectOption, Divider, Grid, TextInput } from "@strapi/design-system";
 import { Drag } from "@strapi/icons";
 import { useSensors, useSensor, PointerSensor, KeyboardSensor, DndContext, closestCenter } from "@dnd-kit/core";
 import styled from "styled-components";
@@ -489,6 +489,7 @@ const SortModal = ({ uid, mainField, contentType, mode = "global", label }) => {
     }
     return listViewFilters;
   }, [mode, selectedFilterField, selectedFilterValue, listViewFilters]);
+  const filtersString = useMemo(() => JSON.stringify(filters), [filters]);
   const fetchFilterOptions = useCallback(
     async (fieldName) => {
       if (!fieldName || !contentType?.attributes?.[fieldName]) {
@@ -721,7 +722,18 @@ const SortModal = ({ uid, mainField, contentType, mode = "global", label }) => {
     });
     return displayableFields;
   }, [contentType, resolvedSortField]);
+  const isFetchingRef = useRef(false);
+  const abortControllerRef = useRef(null);
   const fetchEntries = useCallback(async () => {
+    if (isFetchingRef.current) {
+      return;
+    }
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
+    isFetchingRef.current = true;
     setEntriesFetchState({ status: FetchStatus.Loading });
     try {
       const allDisplayFields = [
@@ -747,21 +759,29 @@ const SortModal = ({ uid, mainField, contentType, mode = "global", label }) => {
             locale,
             relationFields: relationFieldsParam,
             additionalFields: additionalFieldsParam
-          }
+          },
+          signal: abortController.signal
         }
       );
+      if (abortController.signal.aborted) {
+        return;
+      }
       setEntriesFetchState({ status: FetchStatus.Resolved, value: entries });
     } catch (error) {
-      console.error(`Failed to fetch data:`, error);
-      if (error instanceof Error) {
-        console.error("Error details:", {
-          message: error.message,
-          stack: error.stack,
-          response: error.response?.data,
-          status: error.response?.status
-        });
+      if (error?.name === "AbortError" || abortController.signal.aborted) {
+        return;
       }
-      setEntriesFetchState({ status: FetchStatus.Failed });
+      if (error instanceof Error && error.name !== "AbortError") {
+        console.error(`Failed to fetch data:`, error.message);
+      }
+      if (!abortController.signal.aborted) {
+        setEntriesFetchState({ status: FetchStatus.Failed });
+      }
+    } finally {
+      if (abortControllerRef.current === abortController) {
+        isFetchingRef.current = false;
+        abortControllerRef.current = null;
+      }
     }
   }, [
     uid,
@@ -784,24 +804,59 @@ const SortModal = ({ uid, mainField, contentType, mode = "global", label }) => {
   }, [selectedFilterField, isOpen, mode, fetchFilterOptions]);
   useEffect(() => {
     if (!isOpen) {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+        abortControllerRef.current = null;
+      }
       setSelectedDisplayField(mainField);
       setAdditionalDisplayField1("");
       setAdditionalDisplayField2("");
       setSelectedFilterField("");
       setSelectedFilterValue("");
       setFilterOptions([]);
+      isFetchingRef.current = false;
+      prevFetchParamsRef.current = "";
     }
   }, [isOpen, mainField]);
   useEffect(() => {
-    if (isOpen) {
-      if (mode === "scoped") {
-        if (selectedFilterField && selectedFilterValue) {
-          fetchEntries();
-        }
-      } else {
-        fetchEntries();
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+        abortControllerRef.current = null;
+      }
+    };
+  }, []);
+  const prevFetchParamsRef = useRef("");
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+    if (mode === "scoped") {
+      if (!selectedFilterField || !selectedFilterValue) {
+        return;
       }
     }
+    const fetchKey = JSON.stringify({
+      isOpen,
+      mode,
+      selectedDisplayField,
+      additionalDisplayField1,
+      additionalDisplayField2,
+      selectedFilterField,
+      selectedFilterValue,
+      filtersString,
+      locale
+    });
+    if (prevFetchParamsRef.current === fetchKey) {
+      return;
+    }
+    prevFetchParamsRef.current = fetchKey;
+    const timeoutId = setTimeout(() => {
+      fetchEntries();
+    }, 300);
+    return () => {
+      clearTimeout(timeoutId);
+    };
   }, [
     isOpen,
     mode,
@@ -810,6 +865,8 @@ const SortModal = ({ uid, mainField, contentType, mode = "global", label }) => {
     additionalDisplayField2,
     selectedFilterField,
     selectedFilterValue,
+    filtersString,
+    locale,
     fetchEntries
   ]);
   const handleDragEnd = (activeID, overID) => {
@@ -862,203 +919,201 @@ const SortModal = ({ uid, mainField, contentType, mode = "global", label }) => {
       /* @__PURE__ */ jsx(Modal.Header, { children: /* @__PURE__ */ jsx(Modal.Title, { children: /* @__PURE__ */ jsx(FormattedMessage, { id: prefixKey("title") }) }) }),
       /* @__PURE__ */ jsxs(Modal.Body, { children: [
         /* @__PURE__ */ jsxs(Box, { paddingBottom: 4, children: [
-          /* @__PURE__ */ jsxs(Box, { paddingBottom: 3, children: [
-            /* @__PURE__ */ jsx(Typography, { variant: "omega", fontWeight: "semiBold", as: "label", children: "Display field" }),
-            /* @__PURE__ */ jsx(Box, { paddingTop: 2, children: /* @__PURE__ */ jsxs(
-              "select",
-              {
-                value: selectedDisplayField,
-                onChange: (e) => {
-                  setSelectedDisplayField(e.target.value);
-                },
-                disabled: isSubmitting,
-                style: {
-                  width: "100%",
-                  padding: "8px 12px",
-                  borderRadius: "4px",
-                  border: "1px solid #dcdce4",
-                  fontSize: "14px",
-                  backgroundColor: "#ffffff",
-                  cursor: isSubmitting ? "not-allowed" : "pointer"
-                },
-                children: [
-                  /* @__PURE__ */ jsxs("option", { value: mainField, children: [
-                    mainField,
-                    " (default)"
-                  ] }),
-                  getDisplayableFieldsMemo.filter((fieldName) => fieldName !== mainField).map((fieldName) => {
-                    const attr = contentType?.attributes?.[fieldName];
-                    const fieldType = attr?.type === "enumeration" ? " (enum)" : attr?.type === "relation" ? " (relation)" : attr?.type === "media" ? " (media)" : "";
-                    return /* @__PURE__ */ jsxs("option", { value: fieldName, children: [
-                      fieldName,
-                      fieldType
-                    ] }, fieldName);
-                  })
-                ]
-              }
-            ) })
-          ] }),
-          /* @__PURE__ */ jsxs(Box, { paddingBottom: 3, children: [
-            /* @__PURE__ */ jsx(Typography, { variant: "omega", fontWeight: "semiBold", as: "label", children: "Additional display field 1 (optional)" }),
-            /* @__PURE__ */ jsx(Box, { paddingTop: 2, children: /* @__PURE__ */ jsxs(
-              "select",
-              {
-                value: additionalDisplayField1,
-                onChange: (e) => {
-                  setAdditionalDisplayField1(e.target.value);
-                },
-                disabled: isSubmitting,
-                style: {
-                  width: "100%",
-                  padding: "8px 12px",
-                  borderRadius: "4px",
-                  border: "1px solid #dcdce4",
-                  fontSize: "14px",
-                  backgroundColor: "#ffffff",
-                  cursor: isSubmitting ? "not-allowed" : "pointer"
-                },
-                children: [
-                  /* @__PURE__ */ jsx("option", { value: "", children: "None" }),
-                  getDisplayableFieldsMemo.filter(
-                    (fieldName) => fieldName !== selectedDisplayField && fieldName !== additionalDisplayField2
-                  ).map((fieldName) => {
-                    const attr = contentType?.attributes?.[fieldName];
-                    const fieldType = attr?.type === "enumeration" ? " (enum)" : attr?.type === "relation" ? " (relation)" : attr?.type === "media" ? " (media)" : "";
-                    return /* @__PURE__ */ jsxs("option", { value: fieldName, children: [
-                      fieldName,
-                      fieldType
-                    ] }, fieldName);
-                  })
-                ]
-              }
-            ) })
-          ] }),
-          /* @__PURE__ */ jsxs(Box, { paddingBottom: 3, children: [
-            /* @__PURE__ */ jsx(Typography, { variant: "omega", fontWeight: "semiBold", as: "label", children: "Additional display field 2 (optional)" }),
-            /* @__PURE__ */ jsx(Box, { paddingTop: 2, children: /* @__PURE__ */ jsxs(
-              "select",
-              {
-                value: additionalDisplayField2,
-                onChange: (e) => {
-                  setAdditionalDisplayField2(e.target.value);
-                },
-                disabled: isSubmitting,
-                style: {
-                  width: "100%",
-                  padding: "8px 12px",
-                  borderRadius: "4px",
-                  border: "1px solid #dcdce4",
-                  fontSize: "14px",
-                  backgroundColor: "#ffffff",
-                  cursor: isSubmitting ? "not-allowed" : "pointer"
-                },
-                children: [
-                  /* @__PURE__ */ jsx("option", { value: "", children: "None" }),
-                  getDisplayableFieldsMemo.filter(
-                    (fieldName) => fieldName !== selectedDisplayField && fieldName !== additionalDisplayField1
-                  ).map((fieldName) => {
-                    const attr = contentType?.attributes?.[fieldName];
-                    const fieldType = attr?.type === "enumeration" ? " (enum)" : attr?.type === "relation" ? " (relation)" : attr?.type === "media" ? " (media)" : "";
-                    return /* @__PURE__ */ jsxs("option", { value: fieldName, children: [
-                      fieldName,
-                      fieldType
-                    ] }, fieldName);
-                  })
-                ]
-              }
-            ) })
+          /* @__PURE__ */ jsx(Typography, { variant: "omega", fontWeight: "semiBold", as: "label", textColor: "neutral800", children: "Display field" }),
+          /* @__PURE__ */ jsx(Box, { paddingTop: 2, children: /* @__PURE__ */ jsxs(
+            SingleSelect,
+            {
+              value: selectedDisplayField || mainField,
+              onChange: (value) => {
+                if (value) {
+                  setSelectedDisplayField(value);
+                }
+              },
+              disabled: isSubmitting,
+              placeholder: "Select a field",
+              error: void 0,
+              children: [
+                /* @__PURE__ */ jsxs(SingleSelectOption, { value: mainField, children: [
+                  mainField,
+                  " (default)"
+                ] }),
+                getDisplayableFieldsMemo.filter((fieldName) => fieldName !== mainField).map((fieldName) => {
+                  const attr = contentType?.attributes?.[fieldName];
+                  const fieldType = attr?.type === "enumeration" ? " (enum)" : attr?.type === "relation" ? " (relation)" : attr?.type === "media" ? " (media)" : "";
+                  return /* @__PURE__ */ jsxs(SingleSelectOption, { value: fieldName, children: [
+                    fieldName,
+                    fieldType
+                  ] }, fieldName);
+                })
+              ]
+            }
+          ) })
+        ] }),
+        /* @__PURE__ */ jsx(Divider, {}),
+        /* @__PURE__ */ jsxs(Box, { paddingTop: 4, paddingBottom: 4, children: [
+          /* @__PURE__ */ jsx(
+            Typography,
+            {
+              variant: "omega",
+              fontWeight: "semiBold",
+              as: "label",
+              textColor: "neutral600",
+              paddingBottom: 3,
+              children: "Additional display fields (optional)"
+            }
+          ),
+          /* @__PURE__ */ jsxs(Grid.Root, { gap: 3, columns: 2, children: [
+            /* @__PURE__ */ jsx(Grid.Item, { col: 1, children: /* @__PURE__ */ jsxs(Box, { children: [
+              /* @__PURE__ */ jsx(Typography, { variant: "pi", fontWeight: "medium", as: "label", textColor: "neutral700", children: "Field 1" }),
+              /* @__PURE__ */ jsx(Box, { paddingTop: 2, children: /* @__PURE__ */ jsxs(
+                SingleSelect,
+                {
+                  value: additionalDisplayField1 || void 0,
+                  onChange: (value) => {
+                    setAdditionalDisplayField1(value || "");
+                  },
+                  disabled: isSubmitting,
+                  placeholder: "None",
+                  clearLabel: "Clear selection",
+                  onClear: () => setAdditionalDisplayField1(""),
+                  error: void 0,
+                  children: [
+                    /* @__PURE__ */ jsx(SingleSelectOption, { value: "", children: "None" }),
+                    getDisplayableFieldsMemo.filter(
+                      (fieldName) => fieldName !== selectedDisplayField && fieldName !== additionalDisplayField2
+                    ).map((fieldName) => {
+                      const attr = contentType?.attributes?.[fieldName];
+                      const fieldType = attr?.type === "enumeration" ? " (enum)" : attr?.type === "relation" ? " (relation)" : attr?.type === "media" ? " (media)" : "";
+                      return /* @__PURE__ */ jsxs(SingleSelectOption, { value: fieldName, children: [
+                        fieldName,
+                        fieldType
+                      ] }, fieldName);
+                    })
+                  ]
+                }
+              ) })
+            ] }) }),
+            /* @__PURE__ */ jsx(Grid.Item, { col: 1, children: /* @__PURE__ */ jsxs(Box, { children: [
+              /* @__PURE__ */ jsx(Typography, { variant: "pi", fontWeight: "medium", as: "label", textColor: "neutral700", children: "Field 2" }),
+              /* @__PURE__ */ jsx(Box, { paddingTop: 2, children: /* @__PURE__ */ jsxs(
+                SingleSelect,
+                {
+                  value: additionalDisplayField2 || void 0,
+                  onChange: (value) => {
+                    setAdditionalDisplayField2(value || "");
+                  },
+                  disabled: isSubmitting,
+                  placeholder: "None",
+                  clearLabel: "Clear selection",
+                  onClear: () => setAdditionalDisplayField2(""),
+                  error: void 0,
+                  children: [
+                    /* @__PURE__ */ jsx(SingleSelectOption, { value: "", children: "None" }),
+                    getDisplayableFieldsMemo.filter(
+                      (fieldName) => fieldName !== selectedDisplayField && fieldName !== additionalDisplayField1
+                    ).map((fieldName) => {
+                      const attr = contentType?.attributes?.[fieldName];
+                      const fieldType = attr?.type === "enumeration" ? " (enum)" : attr?.type === "relation" ? " (relation)" : attr?.type === "media" ? " (media)" : "";
+                      return /* @__PURE__ */ jsxs(SingleSelectOption, { value: fieldName, children: [
+                        fieldName,
+                        fieldType
+                      ] }, fieldName);
+                    })
+                  ]
+                }
+              ) })
+            ] }) })
           ] })
         ] }),
-        mode === "scoped" && /* @__PURE__ */ jsxs(Box, { paddingBottom: 4, children: [
-          /* @__PURE__ */ jsxs(Box, { paddingBottom: 3, children: [
-            /* @__PURE__ */ jsx(Typography, { variant: "omega", fontWeight: "semiBold", as: "label", children: "Filter by field" }),
-            /* @__PURE__ */ jsx(Box, { paddingTop: 2, children: /* @__PURE__ */ jsxs(
-              "select",
-              {
-                value: selectedFilterField,
-                onChange: (e) => {
-                  setSelectedFilterField(e.target.value);
-                  setSelectedFilterValue("");
-                },
-                disabled: isSubmitting,
-                style: {
-                  width: "100%",
-                  padding: "8px 12px",
-                  borderRadius: "4px",
-                  border: "1px solid #dcdce4",
-                  fontSize: "14px",
-                  backgroundColor: "#ffffff",
-                  cursor: isSubmitting ? "not-allowed" : "pointer"
-                },
-                children: [
-                  /* @__PURE__ */ jsx("option", { value: "", children: "Select a field to filter by" }),
-                  getFilterableFieldsMemo.map((fieldName) => {
+        mode === "scoped" && /* @__PURE__ */ jsxs(Fragment, { children: [
+          /* @__PURE__ */ jsx(Divider, {}),
+          /* @__PURE__ */ jsxs(Box, { paddingTop: 4, paddingBottom: 4, children: [
+            /* @__PURE__ */ jsxs(Box, { paddingBottom: 3, children: [
+              /* @__PURE__ */ jsx(
+                Typography,
+                {
+                  variant: "omega",
+                  fontWeight: "semiBold",
+                  as: "label",
+                  textColor: "neutral800",
+                  children: "Filter by field"
+                }
+              ),
+              /* @__PURE__ */ jsx(Box, { paddingTop: 2, children: /* @__PURE__ */ jsx(
+                SingleSelect,
+                {
+                  value: selectedFilterField || void 0,
+                  onChange: (value) => {
+                    setSelectedFilterField(value || "");
+                    setSelectedFilterValue("");
+                  },
+                  disabled: isSubmitting,
+                  placeholder: "Select a field to filter by",
+                  clearLabel: "Clear selection",
+                  onClear: () => {
+                    setSelectedFilterField("");
+                    setSelectedFilterValue("");
+                  },
+                  error: void 0,
+                  children: getFilterableFieldsMemo.map((fieldName) => {
                     const attr = contentType?.attributes?.[fieldName];
                     const fieldType = attr?.type === "enumeration" ? " (enum)" : attr?.type === "relation" ? " (relation)" : "";
-                    return /* @__PURE__ */ jsxs("option", { value: fieldName, children: [
+                    return /* @__PURE__ */ jsxs(SingleSelectOption, { value: fieldName, children: [
                       fieldName,
                       fieldType
                     ] }, fieldName);
                   })
-                ]
-              }
-            ) })
-          ] }),
-          selectedFilterField && (() => {
-            const selectedAttr = contentType?.attributes?.[selectedFilterField];
-            const isRelationOrEnum = selectedAttr?.type === "relation" || selectedAttr?.type === "enumeration";
-            const needsTextInput = !isRelationOrEnum && filterOptions.length === 0;
-            return /* @__PURE__ */ jsxs(Box, { children: [
-              /* @__PURE__ */ jsx(Typography, { variant: "omega", fontWeight: "semiBold", as: "label", children: "Filter value" }),
-              /* @__PURE__ */ jsx(Box, { paddingTop: 2, children: needsTextInput ? (
-                // Text input for string, number, boolean, date, etc.
-                /* @__PURE__ */ jsx(
-                  "input",
-                  {
-                    type: selectedAttr?.type === "boolean" ? "text" : selectedAttr?.type === "date" || selectedAttr?.type === "datetime" ? "date" : ["integer", "biginteger", "float", "decimal"].includes(
-                      selectedAttr?.type || ""
-                    ) ? "number" : "text",
-                    value: selectedFilterValue,
-                    onChange: (e) => setSelectedFilterValue(e.target.value),
-                    disabled: isSubmitting,
-                    placeholder: selectedAttr?.type === "boolean" ? "Enter true/false" : selectedAttr?.type === "date" || selectedAttr?.type === "datetime" ? "Select date" : `Enter ${selectedAttr?.type || "value"}`,
-                    style: {
-                      width: "100%",
-                      padding: "8px 12px",
-                      borderRadius: "4px",
-                      border: "1px solid #dcdce4",
-                      fontSize: "14px",
-                      backgroundColor: "#ffffff",
-                      cursor: isSubmitting ? "not-allowed" : "text"
-                    }
-                  }
-                )
-              ) : (
-                // Select dropdown for relation and enumeration
-                /* @__PURE__ */ jsxs(
-                  "select",
-                  {
-                    value: selectedFilterValue,
-                    onChange: (e) => setSelectedFilterValue(e.target.value),
-                    disabled: isSubmitting || isLoadingOptions || filterOptions.length === 0,
-                    style: {
-                      width: "100%",
-                      padding: "8px 12px",
-                      borderRadius: "4px",
-                      border: "1px solid #dcdce4",
-                      fontSize: "14px",
-                      backgroundColor: "#ffffff",
-                      cursor: isSubmitting || isLoadingOptions || filterOptions.length === 0 ? "not-allowed" : "pointer"
-                    },
-                    children: [
-                      /* @__PURE__ */ jsx("option", { value: "", children: isLoadingOptions ? "Loading options..." : "Select a value" }),
-                      filterOptions.map((option) => /* @__PURE__ */ jsx("option", { value: option.id, children: option.label }, option.id))
-                    ]
-                  }
-                )
+                }
               ) })
-            ] });
-          })()
+            ] }),
+            selectedFilterField && (() => {
+              const selectedAttr = contentType?.attributes?.[selectedFilterField];
+              const isRelationOrEnum = selectedAttr?.type === "relation" || selectedAttr?.type === "enumeration";
+              const needsTextInput = !isRelationOrEnum && filterOptions.length === 0;
+              return /* @__PURE__ */ jsxs(Box, { children: [
+                /* @__PURE__ */ jsx(
+                  Typography,
+                  {
+                    variant: "omega",
+                    fontWeight: "semiBold",
+                    as: "label",
+                    textColor: "neutral800",
+                    children: "Filter value"
+                  }
+                ),
+                /* @__PURE__ */ jsx(Box, { paddingTop: 2, children: needsTextInput ? (
+                  // Text input for string, number, boolean, date, etc.
+                  /* @__PURE__ */ jsx(
+                    TextInput,
+                    {
+                      type: selectedAttr?.type === "boolean" ? "text" : selectedAttr?.type === "date" || selectedAttr?.type === "datetime" ? "date" : ["integer", "biginteger", "float", "decimal"].includes(
+                        selectedAttr?.type || ""
+                      ) ? "number" : "text",
+                      value: selectedFilterValue,
+                      onChange: (e) => setSelectedFilterValue(e.target.value),
+                      disabled: isSubmitting,
+                      placeholder: selectedAttr?.type === "boolean" ? "Enter true/false" : selectedAttr?.type === "date" || selectedAttr?.type === "datetime" ? "Select date" : `Enter ${selectedAttr?.type || "value"}`
+                    }
+                  )
+                ) : (
+                  // Select dropdown for relation and enumeration
+                  /* @__PURE__ */ jsx(
+                    SingleSelect,
+                    {
+                      value: selectedFilterValue || void 0,
+                      onChange: (value) => setSelectedFilterValue(value || ""),
+                      disabled: isSubmitting || isLoadingOptions || filterOptions.length === 0,
+                      placeholder: isLoadingOptions ? "Loading options..." : "Select a value",
+                      clearLabel: "Clear selection",
+                      onClear: () => setSelectedFilterValue(""),
+                      error: void 0,
+                      children: filterOptions.map((option) => /* @__PURE__ */ jsx(SingleSelectOption, { value: option.id, children: option.label }, option.id))
+                    }
+                  )
+                ) })
+              ] });
+            })()
+          ] })
         ] }),
         mode === "scoped" && (!selectedFilterField || !selectedFilterValue) ? /* @__PURE__ */ jsx(Box, { padding: 4, children: /* @__PURE__ */ jsx(Typography, { variant: "omega", textColor: "neutral600", children: "Please select a field and value to filter entries." }) }) : /* @__PURE__ */ jsx(
           SortModalBody,
