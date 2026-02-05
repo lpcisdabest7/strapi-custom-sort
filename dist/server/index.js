@@ -112,12 +112,13 @@ const controller = ({ strapi: strapi2 }) => ({
   async fetchEntries(ctx) {
     try {
       const { uid } = ctx.params;
-      const { mainField, filters, locale, relationFields } = ctx.request.query;
+      const { mainField, filters, locale, relationFields, additionalFields } = ctx.request.query;
       if (!mainField) {
         ctx.badRequest("Missing required `mainField` query parameter.");
         return;
       }
       const parsedRelationFields = relationFields ? relationFields.split(",") : void 0;
+      const parsedAdditionalFields = additionalFields ? additionalFields.split(",").filter((f) => f && f !== "") : void 0;
       const service2 = strapi2.plugin("sortable-entries").service("service");
       if (!service2) {
         ctx.internalServerError("Service not found");
@@ -128,7 +129,8 @@ const controller = ({ strapi: strapi2 }) => ({
         mainField,
         filters,
         locale,
-        relationFields: parsedRelationFields
+        relationFields: parsedRelationFields,
+        additionalFields: parsedAdditionalFields
       });
       ctx.response.body = JSON.stringify(entries);
     } catch (error) {
@@ -310,7 +312,8 @@ const service = ({ strapi: strapi2 }) => ({
     mainField,
     filters,
     locale,
-    relationFields
+    relationFields,
+    additionalFields
   }) {
     let contentType;
     try {
@@ -320,18 +323,37 @@ const service = ({ strapi: strapi2 }) => ({
     }
     const attributes = contentType?.attributes || {};
     const fields = ["documentId"];
+    const isRelationFieldType = (attribute) => {
+      return attribute.type === "relation" || attribute.type === "media" || attribute.relation && typeof attribute.relation === "string";
+    };
     if (mainField !== "documentId" && attributes[mainField]) {
       const attribute = attributes[mainField];
-      const isRelationField = attribute.type === "relation" || attribute.type === "media" || attribute.relation && typeof attribute.relation === "string";
-      if (!isRelationField) {
+      if (!isRelationFieldType(attribute)) {
         fields.push(mainField);
       }
     }
+    if (additionalFields && additionalFields.length > 0) {
+      additionalFields.forEach((fieldName) => {
+        if (fieldName && fieldName !== "documentId" && attributes[fieldName]) {
+          const attribute = attributes[fieldName];
+          if (!isRelationFieldType(attribute) && !fields.includes(fieldName)) {
+            fields.push(fieldName);
+          }
+        }
+      });
+    }
     const validRelationFields = [];
     const systemFields = ["createdBy", "updatedBy", "localizations", "locale"];
-    if (relationFields && relationFields.length > 0) {
-      relationFields.forEach((field) => {
+    const allPotentialRelationFields = [
+      ...relationFields || [],
+      ...additionalFields || []
+    ];
+    if (allPotentialRelationFields.length > 0) {
+      allPotentialRelationFields.forEach((field) => {
         if (systemFields.includes(field)) {
+          return;
+        }
+        if (validRelationFields.includes(field)) {
           return;
         }
         if (attributes[field]) {

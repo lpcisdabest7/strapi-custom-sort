@@ -14,12 +14,13 @@ declare const service: ({ strapi }: {
      * @returns A promise resolving to an array of entries,
      *          each containing the `documentId` and the specified `mainField`.
      */
-    fetchEntries({ uid, mainField, filters, locale, relationFields, }: {
+    fetchEntries({ uid, mainField, filters, locale, relationFields, additionalFields, }: {
         uid: ContentTypeUID;
         mainField: string;
         filters: Filters | undefined;
         locale: Locale | undefined;
         relationFields?: string[];
+        additionalFields?: string[];
     }): Promise<import("@strapi/types/dist/modules/documents").AnyDocument[]>;
     /**
      * Fetches the entry with the highest value in the configured sort order field for a given content type.

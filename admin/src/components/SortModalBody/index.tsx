@@ -140,10 +140,44 @@ const formatRelationLabel = (entry: any, relationFields: string[]): string => {
 //
 
 /**
+ * Gets the display value from a field, handling relation fields and system fields.
+ */
+const getFieldDisplayValue = (entry: any, fieldName: string, contentType: any): string | null => {
+  if (!fieldName || !contentType?.attributes?.[fieldName]) {
+    return null;
+  }
+
+  const attribute = contentType.attributes[fieldName];
+  const value = entry[fieldName];
+
+  // Handle relation fields
+  if (attribute.type === 'relation' || attribute.type === 'media') {
+    if (Array.isArray(value)) {
+      const labels = value
+        .map((item: any) => getRelationDisplayValue(item))
+        .filter((label: string) => label && label !== 'Unknown');
+      return labels.length > 0 ? labels.join(', ') : null;
+    } else if (value && typeof value === 'object') {
+      const displayValue = getRelationDisplayValue(value);
+      return displayValue && displayValue !== 'Unknown' ? displayValue : null;
+    }
+    return null;
+  }
+
+  // Handle regular fields
+  if (value !== null && value !== undefined && value !== '') {
+    return String(value);
+  }
+
+  return null;
+};
+
+/**
  * Returns different elements for the modal body, depending on the current fetch status.
  *
  * @param entriesFetchState - The state for fetching the entries.
  * @param mainField - The displayed field of each entry in the collection type.
+ * @param additionalFields - Optional array of additional fields to display.
  * @param contentType - The content type configuration.
  * @param handleDragEnd - The event handler that is called on drag end.
  * @param disabled - Boolean flag whether sorting is disabled.
@@ -151,12 +185,14 @@ const formatRelationLabel = (entry: any, relationFields: string[]): string => {
 const SortModalBody = ({
   entriesFetchState,
   mainField,
+  additionalFields = [],
   contentType,
   handleDragEnd,
   disabled,
 }: {
   entriesFetchState: EntriesFetchState;
   mainField: string;
+  additionalFields?: string[];
   contentType: any;
   handleDragEnd: DragEndEvent;
   disabled: boolean;
@@ -208,43 +244,39 @@ const SortModalBody = ({
 
       // Converts the data-models into view-models for the `<SortableList />` component.
       const sortableList: SortableList = entries.map((entry) => {
-        let label: string;
+        const labelParts: string[] = [];
 
-        // First, try to use mainField if it's not a system field and has a value
-        if (!isMainFieldSystem) {
-          const mainFieldValue = entry[mainField];
-          if (mainFieldValue !== null && mainFieldValue !== undefined && mainFieldValue !== '') {
-            label = String(mainFieldValue);
-          } else if (shouldUseRelationFields && relationFields.length > 0) {
-            // Fallback to relation fields if mainField is empty
-            label = formatRelationLabel(entry, relationFields);
-            if (!label) {
-              label = `Entry ${entry.documentId}`;
-            }
-          } else {
-            label = `Entry ${entry.documentId}`;
+        // Get main field value
+        const mainFieldValue = getFieldDisplayValue(entry, mainField, contentType);
+        if (mainFieldValue) {
+          labelParts.push(mainFieldValue);
+        } else if (!isMainFieldSystem && shouldUseRelationFields && relationFields.length > 0) {
+          // Fallback to relation fields if mainField is empty
+          const relationLabel = formatRelationLabel(entry, relationFields);
+          if (relationLabel) {
+            labelParts.push(relationLabel);
           }
-        } else if (shouldUseRelationFields && relationFields.length > 0) {
+        } else if (isMainFieldSystem && shouldUseRelationFields && relationFields.length > 0) {
           // Use relation fields if mainField is a system field
-          // Format: "categoryName - templateName" or just one if the other is missing
-          label = formatRelationLabel(entry, relationFields);
-          if (!label || label.trim() === '') {
-            // If no label from relations, check if relations exist but are empty/null
-            const hasAnyRelation = relationFields.some((field) => {
-              const value = entry[field];
-              return value !== null && value !== undefined;
-            });
-            if (hasAnyRelation) {
-              // Relations exist but couldn't extract display value
-              // Try to show documentId with a note
-              label = `Entry ${entry.documentId}`;
-            } else {
-              // No relations at all
-              label = `Entry ${entry.documentId}`;
-            }
+          const relationLabel = formatRelationLabel(entry, relationFields);
+          if (relationLabel) {
+            labelParts.push(relationLabel);
           }
+        }
+
+        // Get additional field values
+        additionalFields.forEach((fieldName) => {
+          const fieldValue = getFieldDisplayValue(entry, fieldName, contentType);
+          if (fieldValue) {
+            labelParts.push(fieldValue);
+          }
+        });
+
+        // Build final label
+        let label: string;
+        if (labelParts.length > 0) {
+          label = labelParts.join(' - ');
         } else {
-          // Last resort: use documentId
           label = `Entry ${entry.documentId}`;
         }
 
@@ -254,8 +286,12 @@ const SortModalBody = ({
         };
       });
 
-      const heading =
-        shouldUseRelationFields && relationFields.length > 0 ? relationFields.join('-') : mainField;
+      // Build heading from all fields
+      const headingParts: string[] = [mainField];
+      if (additionalFields.length > 0) {
+        headingParts.push(...additionalFields);
+      }
+      const heading = headingParts.join(' - ');
 
       return (
         <SortableListComponent

@@ -2,12 +2,13 @@ declare const _default: {
     service: ({ strapi }: {
         strapi: import("@strapi/types/dist/core").Strapi;
     }) => {
-        fetchEntries({ uid, mainField, filters, locale, relationFields, }: {
+        fetchEntries({ uid, mainField, filters, locale, relationFields, additionalFields, }: {
             uid: import("@strapi/types/dist/uid").ContentType;
             mainField: string;
             filters: any;
             locale: any;
             relationFields?: string[];
+            additionalFields?: string[];
         }): Promise<import("@strapi/types/dist/modules/documents").AnyDocument[]>;
         fetchLastEntry({ uid, locale }: {
             uid: import("@strapi/types/dist/uid").ContentType;

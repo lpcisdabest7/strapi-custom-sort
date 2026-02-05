@@ -75,6 +75,11 @@ const SortModal = ({ uid, mainField, contentType, mode = 'global', label }: Sort
     status: FetchStatus.Initial,
   });
 
+  // Display field selection state
+  const [selectedDisplayField, setSelectedDisplayField] = useState<string>(mainField);
+  const [additionalDisplayField1, setAdditionalDisplayField1] = useState<string>('');
+  const [additionalDisplayField2, setAdditionalDisplayField2] = useState<string>('');
+
   // Scoped filter selection state
   const [selectedFilterField, setSelectedFilterField] = useState<string>('');
   const [selectedFilterValue, setSelectedFilterValue] = useState<string>('');
@@ -458,13 +463,94 @@ const SortModal = ({ uid, mainField, contentType, mode = 'global', label }: Sort
   }, [contentType]);
 
   /**
+   * Gets all displayable fields from contentType attributes.
+   * Includes: string, text, email, enumeration, relation, media, number, boolean, date, etc.
+   * Excludes: system fields and the sort order field.
+   */
+  const getDisplayableFieldsMemo = useMemo(() => {
+    if (!contentType || !contentType.attributes) {
+      return [];
+    }
+    const displayableFields: string[] = [];
+    const systemFields = [
+      'documentId',
+      'id',
+      'createdAt',
+      'updatedAt',
+      'publishedAt',
+      'createdBy',
+      'updatedBy',
+      'locale',
+      'localizations',
+      'strapi_stage',
+      'strapi_assignee',
+    ];
+
+    Object.keys(contentType.attributes).forEach((fieldName) => {
+      // Skip system fields
+      if (systemFields.includes(fieldName)) {
+        return;
+      }
+
+      // Skip the sort order field
+      if (fieldName === resolvedSortField) {
+        return;
+      }
+
+      const attribute = contentType.attributes[fieldName];
+      if (!attribute || !attribute.type) {
+        return;
+      }
+
+      // Include all displayable field types
+      const displayableTypes = [
+        'string',
+        'text',
+        'richtext',
+        'email',
+        'password',
+        'enumeration',
+        'integer',
+        'biginteger',
+        'float',
+        'decimal',
+        'boolean',
+        'date',
+        'time',
+        'datetime',
+        'timestamp',
+        'relation',
+        'media',
+      ];
+
+      if (
+        displayableTypes.includes(attribute.type) ||
+        (attribute.type &&
+          typeof attribute.type === 'string' &&
+          attribute.type.includes('relation'))
+      ) {
+        displayableFields.push(fieldName);
+      }
+    });
+    return displayableFields;
+  }, [contentType, resolvedSortField]);
+
+  /**
    * Fetches the entries of the current collection type.
    */
   const fetchEntries = useCallback(async () => {
     setEntriesFetchState({ status: FetchStatus.Loading });
 
     try {
-      const useRelationFields = isSystemField(mainField);
+      // Collect all display fields (main + additional)
+      const allDisplayFields = [
+        selectedDisplayField,
+        additionalDisplayField1,
+        additionalDisplayField2,
+      ].filter((field) => field && field !== '');
+
+      // Check if any display field is a system field
+      const useRelationFields = allDisplayFields.some((field) => isSystemField(field));
       const relationFieldsParam =
         useRelationFields && getFilterableFieldsMemo.length > 0
           ? getFilterableFieldsMemo
@@ -476,12 +562,25 @@ const SortModal = ({ uid, mainField, contentType, mode = 'global', label }: Sort
               .join(',')
           : undefined;
 
+      // Collect additional fields (excluding empty and main field)
+      const additionalFieldsArray = [additionalDisplayField1, additionalDisplayField2].filter(
+        (field) => field && field !== '' && field !== selectedDisplayField
+      );
+      const additionalFieldsParam =
+        additionalFieldsArray.length > 0 ? additionalFieldsArray.join(',') : undefined;
+
       const { data: entries } = await fetchClient.get<Entries>(
         mode === 'scoped'
           ? `/sortable-entries/fetch-entries-scoped/${uid}`
           : config.fetchEntriesRequest.path(uid),
         {
-          params: { mainField, filters, locale, relationFields: relationFieldsParam },
+          params: {
+            mainField: selectedDisplayField,
+            filters,
+            locale,
+            relationFields: relationFieldsParam,
+            additionalFields: additionalFieldsParam,
+          },
         }
       );
 
@@ -501,7 +600,18 @@ const SortModal = ({ uid, mainField, contentType, mode = 'global', label }: Sort
       // We therefore don't need to trigger an extra notification here.
       setEntriesFetchState({ status: FetchStatus.Failed });
     }
-  }, [uid, mainField, mode, filters, locale, getFilterableFieldsMemo, contentType, fetchClient]);
+  }, [
+    uid,
+    selectedDisplayField,
+    additionalDisplayField1,
+    additionalDisplayField2,
+    mode,
+    filters,
+    locale,
+    getFilterableFieldsMemo,
+    contentType,
+    fetchClient,
+  ]);
 
   // Fetch filter options when field selection changes
   useEffect(() => {
@@ -515,11 +625,14 @@ const SortModal = ({ uid, mainField, contentType, mode = 'global', label }: Sort
   // Reset selections when modal closes
   useEffect(() => {
     if (!isOpen) {
+      setSelectedDisplayField(mainField);
+      setAdditionalDisplayField1('');
+      setAdditionalDisplayField2('');
       setSelectedFilterField('');
       setSelectedFilterValue('');
       setFilterOptions([]);
     }
-  }, [isOpen]);
+  }, [isOpen, mainField]);
 
   // Fetch the entries when modal opens or filter changes
   useEffect(() => {
@@ -533,7 +646,16 @@ const SortModal = ({ uid, mainField, contentType, mode = 'global', label }: Sort
         fetchEntries();
       }
     }
-  }, [isOpen, mode, selectedFilterField, selectedFilterValue, fetchEntries]);
+  }, [
+    isOpen,
+    mode,
+    selectedDisplayField,
+    additionalDisplayField1,
+    additionalDisplayField2,
+    selectedFilterField,
+    selectedFilterValue,
+    fetchEntries,
+  ]);
 
   /**
    * The callback for the drag-end event.
@@ -627,6 +749,146 @@ const SortModal = ({ uid, mainField, contentType, mode = 'global', label }: Sort
           </Modal.Title>
         </Modal.Header>
         <Modal.Body>
+          <Box paddingBottom={4}>
+            <Box paddingBottom={3}>
+              <Typography variant="omega" fontWeight="semiBold" as="label">
+                Display field
+              </Typography>
+              <Box paddingTop={2}>
+                <select
+                  value={selectedDisplayField}
+                  onChange={(e) => {
+                    setSelectedDisplayField(e.target.value);
+                  }}
+                  disabled={isSubmitting}
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    borderRadius: '4px',
+                    border: '1px solid #dcdce4',
+                    fontSize: '14px',
+                    backgroundColor: '#ffffff',
+                    cursor: isSubmitting ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  <option value={mainField}>{mainField} (default)</option>
+                  {getDisplayableFieldsMemo
+                    .filter((fieldName) => fieldName !== mainField)
+                    .map((fieldName) => {
+                      const attr = contentType?.attributes?.[fieldName];
+                      const fieldType =
+                        attr?.type === 'enumeration'
+                          ? ' (enum)'
+                          : attr?.type === 'relation'
+                            ? ' (relation)'
+                            : attr?.type === 'media'
+                              ? ' (media)'
+                              : '';
+                      return (
+                        <option key={fieldName} value={fieldName}>
+                          {fieldName}
+                          {fieldType}
+                        </option>
+                      );
+                    })}
+                </select>
+              </Box>
+            </Box>
+            <Box paddingBottom={3}>
+              <Typography variant="omega" fontWeight="semiBold" as="label">
+                Additional display field 1 (optional)
+              </Typography>
+              <Box paddingTop={2}>
+                <select
+                  value={additionalDisplayField1}
+                  onChange={(e) => {
+                    setAdditionalDisplayField1(e.target.value);
+                  }}
+                  disabled={isSubmitting}
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    borderRadius: '4px',
+                    border: '1px solid #dcdce4',
+                    fontSize: '14px',
+                    backgroundColor: '#ffffff',
+                    cursor: isSubmitting ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  <option value="">None</option>
+                  {getDisplayableFieldsMemo
+                    .filter(
+                      (fieldName) =>
+                        fieldName !== selectedDisplayField && fieldName !== additionalDisplayField2
+                    )
+                    .map((fieldName) => {
+                      const attr = contentType?.attributes?.[fieldName];
+                      const fieldType =
+                        attr?.type === 'enumeration'
+                          ? ' (enum)'
+                          : attr?.type === 'relation'
+                            ? ' (relation)'
+                            : attr?.type === 'media'
+                              ? ' (media)'
+                              : '';
+                      return (
+                        <option key={fieldName} value={fieldName}>
+                          {fieldName}
+                          {fieldType}
+                        </option>
+                      );
+                    })}
+                </select>
+              </Box>
+            </Box>
+            <Box paddingBottom={3}>
+              <Typography variant="omega" fontWeight="semiBold" as="label">
+                Additional display field 2 (optional)
+              </Typography>
+              <Box paddingTop={2}>
+                <select
+                  value={additionalDisplayField2}
+                  onChange={(e) => {
+                    setAdditionalDisplayField2(e.target.value);
+                  }}
+                  disabled={isSubmitting}
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    borderRadius: '4px',
+                    border: '1px solid #dcdce4',
+                    fontSize: '14px',
+                    backgroundColor: '#ffffff',
+                    cursor: isSubmitting ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  <option value="">None</option>
+                  {getDisplayableFieldsMemo
+                    .filter(
+                      (fieldName) =>
+                        fieldName !== selectedDisplayField && fieldName !== additionalDisplayField1
+                    )
+                    .map((fieldName) => {
+                      const attr = contentType?.attributes?.[fieldName];
+                      const fieldType =
+                        attr?.type === 'enumeration'
+                          ? ' (enum)'
+                          : attr?.type === 'relation'
+                            ? ' (relation)'
+                            : attr?.type === 'media'
+                              ? ' (media)'
+                              : '';
+                      return (
+                        <option key={fieldName} value={fieldName}>
+                          {fieldName}
+                          {fieldType}
+                        </option>
+                      );
+                    })}
+                </select>
+              </Box>
+            </Box>
+          </Box>
           {mode === 'scoped' && (
             <Box paddingBottom={4}>
               <Box paddingBottom={3}>
@@ -763,7 +1025,10 @@ const SortModal = ({ uid, mainField, contentType, mode = 'global', label }: Sort
           ) : (
             <SortModalBody
               entriesFetchState={entriesFetchState}
-              mainField={mainField}
+              mainField={selectedDisplayField}
+              additionalFields={[additionalDisplayField1, additionalDisplayField2].filter(
+                (f) => f && f !== ''
+              )}
               contentType={contentType}
               handleDragEnd={handleDragEnd}
               disabled={isSubmitting}

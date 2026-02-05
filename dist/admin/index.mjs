@@ -264,9 +264,31 @@ const formatRelationLabel = (entry, relationFields) => {
   });
   return labels.length > 0 ? labels.join(" - ") : "";
 };
+const getFieldDisplayValue = (entry, fieldName, contentType) => {
+  if (!fieldName || !contentType?.attributes?.[fieldName]) {
+    return null;
+  }
+  const attribute = contentType.attributes[fieldName];
+  const value = entry[fieldName];
+  if (attribute.type === "relation" || attribute.type === "media") {
+    if (Array.isArray(value)) {
+      const labels = value.map((item) => getRelationDisplayValue(item)).filter((label) => label && label !== "Unknown");
+      return labels.length > 0 ? labels.join(", ") : null;
+    } else if (value && typeof value === "object") {
+      const displayValue = getRelationDisplayValue(value);
+      return displayValue && displayValue !== "Unknown" ? displayValue : null;
+    }
+    return null;
+  }
+  if (value !== null && value !== void 0 && value !== "") {
+    return String(value);
+  }
+  return null;
+};
 const SortModalBody = ({
   entriesFetchState,
   mainField,
+  additionalFields = [],
   contentType,
   handleDragEnd,
   disabled
@@ -305,32 +327,30 @@ const SortModalBody = ({
         });
       }
       const sortableList = entries.map((entry) => {
+        const labelParts = [];
+        const mainFieldValue = getFieldDisplayValue(entry, mainField, contentType);
+        if (mainFieldValue) {
+          labelParts.push(mainFieldValue);
+        } else if (!isMainFieldSystem && shouldUseRelationFields && relationFields.length > 0) {
+          const relationLabel = formatRelationLabel(entry, relationFields);
+          if (relationLabel) {
+            labelParts.push(relationLabel);
+          }
+        } else if (isMainFieldSystem && shouldUseRelationFields && relationFields.length > 0) {
+          const relationLabel = formatRelationLabel(entry, relationFields);
+          if (relationLabel) {
+            labelParts.push(relationLabel);
+          }
+        }
+        additionalFields.forEach((fieldName) => {
+          const fieldValue = getFieldDisplayValue(entry, fieldName, contentType);
+          if (fieldValue) {
+            labelParts.push(fieldValue);
+          }
+        });
         let label;
-        if (!isMainFieldSystem) {
-          const mainFieldValue = entry[mainField];
-          if (mainFieldValue !== null && mainFieldValue !== void 0 && mainFieldValue !== "") {
-            label = String(mainFieldValue);
-          } else if (shouldUseRelationFields && relationFields.length > 0) {
-            label = formatRelationLabel(entry, relationFields);
-            if (!label) {
-              label = `Entry ${entry.documentId}`;
-            }
-          } else {
-            label = `Entry ${entry.documentId}`;
-          }
-        } else if (shouldUseRelationFields && relationFields.length > 0) {
-          label = formatRelationLabel(entry, relationFields);
-          if (!label || label.trim() === "") {
-            const hasAnyRelation = relationFields.some((field) => {
-              const value = entry[field];
-              return value !== null && value !== void 0;
-            });
-            if (hasAnyRelation) {
-              label = `Entry ${entry.documentId}`;
-            } else {
-              label = `Entry ${entry.documentId}`;
-            }
-          }
+        if (labelParts.length > 0) {
+          label = labelParts.join(" - ");
         } else {
           label = `Entry ${entry.documentId}`;
         }
@@ -339,7 +359,11 @@ const SortModalBody = ({
           label
         };
       });
-      const heading = shouldUseRelationFields && relationFields.length > 0 ? relationFields.join("-") : mainField;
+      const headingParts = [mainField];
+      if (additionalFields.length > 0) {
+        headingParts.push(...additionalFields);
+      }
+      const heading = headingParts.join(" - ");
       return /* @__PURE__ */ jsx(
         SortableList,
         {
@@ -374,11 +398,14 @@ const SortModal = ({ uid, mainField, contentType, mode = "global", label }) => {
   const [entriesFetchState, setEntriesFetchState] = useState({
     status: FetchStatus.Initial
   });
+  const [selectedDisplayField, setSelectedDisplayField] = useState(mainField);
+  const [additionalDisplayField1, setAdditionalDisplayField1] = useState("");
+  const [additionalDisplayField2, setAdditionalDisplayField2] = useState("");
   const [selectedFilterField, setSelectedFilterField] = useState("");
   const [selectedFilterValue, setSelectedFilterValue] = useState("");
   const [filterOptions, setFilterOptions] = useState([]);
   const [isLoadingOptions, setIsLoadingOptions] = useState(false);
-  useMemo(() => {
+  const resolvedSortField = useMemo(() => {
     if (!contentType?.attributes) {
       return config$1.sortOrderField;
     }
@@ -640,18 +667,87 @@ const SortModal = ({ uid, mainField, contentType, mode = "global", label }) => {
     });
     return filterableFields;
   }, [contentType]);
+  const getDisplayableFieldsMemo = useMemo(() => {
+    if (!contentType || !contentType.attributes) {
+      return [];
+    }
+    const displayableFields = [];
+    const systemFields = [
+      "documentId",
+      "id",
+      "createdAt",
+      "updatedAt",
+      "publishedAt",
+      "createdBy",
+      "updatedBy",
+      "locale",
+      "localizations",
+      "strapi_stage",
+      "strapi_assignee"
+    ];
+    Object.keys(contentType.attributes).forEach((fieldName) => {
+      if (systemFields.includes(fieldName)) {
+        return;
+      }
+      if (fieldName === resolvedSortField) {
+        return;
+      }
+      const attribute = contentType.attributes[fieldName];
+      if (!attribute || !attribute.type) {
+        return;
+      }
+      const displayableTypes = [
+        "string",
+        "text",
+        "richtext",
+        "email",
+        "password",
+        "enumeration",
+        "integer",
+        "biginteger",
+        "float",
+        "decimal",
+        "boolean",
+        "date",
+        "time",
+        "datetime",
+        "timestamp",
+        "relation",
+        "media"
+      ];
+      if (displayableTypes.includes(attribute.type) || attribute.type && typeof attribute.type === "string" && attribute.type.includes("relation")) {
+        displayableFields.push(fieldName);
+      }
+    });
+    return displayableFields;
+  }, [contentType, resolvedSortField]);
   const fetchEntries = useCallback(async () => {
     setEntriesFetchState({ status: FetchStatus.Loading });
     try {
-      const useRelationFields = isSystemField2(mainField);
+      const allDisplayFields = [
+        selectedDisplayField,
+        additionalDisplayField1,
+        additionalDisplayField2
+      ].filter((field) => field && field !== "");
+      const useRelationFields = allDisplayFields.some((field) => isSystemField2(field));
       const relationFieldsParam = useRelationFields && getFilterableFieldsMemo.length > 0 ? getFilterableFieldsMemo.filter((field) => {
         const attr = contentType?.attributes?.[field];
         return attr?.type === "relation" || attr?.type === "media";
       }).join(",") : void 0;
+      const additionalFieldsArray = [additionalDisplayField1, additionalDisplayField2].filter(
+        (field) => field && field !== "" && field !== selectedDisplayField
+      );
+      const additionalFieldsParam = additionalFieldsArray.length > 0 ? additionalFieldsArray.join(",") : void 0;
       const { data: entries } = await fetchClient.get(
         mode === "scoped" ? `/sortable-entries/fetch-entries-scoped/${uid}` : config.fetchEntriesRequest.path(uid),
         {
-          params: { mainField, filters, locale, relationFields: relationFieldsParam }
+          params: {
+            mainField: selectedDisplayField,
+            filters,
+            locale,
+            relationFields: relationFieldsParam,
+            additionalFields: additionalFieldsParam
+          }
         }
       );
       setEntriesFetchState({ status: FetchStatus.Resolved, value: entries });
@@ -667,7 +763,18 @@ const SortModal = ({ uid, mainField, contentType, mode = "global", label }) => {
       }
       setEntriesFetchState({ status: FetchStatus.Failed });
     }
-  }, [uid, mainField, mode, filters, locale, getFilterableFieldsMemo, contentType, fetchClient]);
+  }, [
+    uid,
+    selectedDisplayField,
+    additionalDisplayField1,
+    additionalDisplayField2,
+    mode,
+    filters,
+    locale,
+    getFilterableFieldsMemo,
+    contentType,
+    fetchClient
+  ]);
   useEffect(() => {
     if (isOpen && mode === "scoped" && selectedFilterField) {
       fetchFilterOptions(selectedFilterField);
@@ -677,11 +784,14 @@ const SortModal = ({ uid, mainField, contentType, mode = "global", label }) => {
   }, [selectedFilterField, isOpen, mode, fetchFilterOptions]);
   useEffect(() => {
     if (!isOpen) {
+      setSelectedDisplayField(mainField);
+      setAdditionalDisplayField1("");
+      setAdditionalDisplayField2("");
       setSelectedFilterField("");
       setSelectedFilterValue("");
       setFilterOptions([]);
     }
-  }, [isOpen]);
+  }, [isOpen, mainField]);
   useEffect(() => {
     if (isOpen) {
       if (mode === "scoped") {
@@ -692,7 +802,16 @@ const SortModal = ({ uid, mainField, contentType, mode = "global", label }) => {
         fetchEntries();
       }
     }
-  }, [isOpen, mode, selectedFilterField, selectedFilterValue, fetchEntries]);
+  }, [
+    isOpen,
+    mode,
+    selectedDisplayField,
+    additionalDisplayField1,
+    additionalDisplayField2,
+    selectedFilterField,
+    selectedFilterValue,
+    fetchEntries
+  ]);
   const handleDragEnd = (activeID, overID) => {
     setEntriesFetchState((entriesFetchState2) => {
       if (entriesFetchState2.status !== FetchStatus.Resolved) {
@@ -742,6 +861,114 @@ const SortModal = ({ uid, mainField, contentType, mode = "global", label }) => {
     /* @__PURE__ */ jsxs(Modal.Content, { children: [
       /* @__PURE__ */ jsx(Modal.Header, { children: /* @__PURE__ */ jsx(Modal.Title, { children: /* @__PURE__ */ jsx(FormattedMessage, { id: prefixKey("title") }) }) }),
       /* @__PURE__ */ jsxs(Modal.Body, { children: [
+        /* @__PURE__ */ jsxs(Box, { paddingBottom: 4, children: [
+          /* @__PURE__ */ jsxs(Box, { paddingBottom: 3, children: [
+            /* @__PURE__ */ jsx(Typography, { variant: "omega", fontWeight: "semiBold", as: "label", children: "Display field" }),
+            /* @__PURE__ */ jsx(Box, { paddingTop: 2, children: /* @__PURE__ */ jsxs(
+              "select",
+              {
+                value: selectedDisplayField,
+                onChange: (e) => {
+                  setSelectedDisplayField(e.target.value);
+                },
+                disabled: isSubmitting,
+                style: {
+                  width: "100%",
+                  padding: "8px 12px",
+                  borderRadius: "4px",
+                  border: "1px solid #dcdce4",
+                  fontSize: "14px",
+                  backgroundColor: "#ffffff",
+                  cursor: isSubmitting ? "not-allowed" : "pointer"
+                },
+                children: [
+                  /* @__PURE__ */ jsxs("option", { value: mainField, children: [
+                    mainField,
+                    " (default)"
+                  ] }),
+                  getDisplayableFieldsMemo.filter((fieldName) => fieldName !== mainField).map((fieldName) => {
+                    const attr = contentType?.attributes?.[fieldName];
+                    const fieldType = attr?.type === "enumeration" ? " (enum)" : attr?.type === "relation" ? " (relation)" : attr?.type === "media" ? " (media)" : "";
+                    return /* @__PURE__ */ jsxs("option", { value: fieldName, children: [
+                      fieldName,
+                      fieldType
+                    ] }, fieldName);
+                  })
+                ]
+              }
+            ) })
+          ] }),
+          /* @__PURE__ */ jsxs(Box, { paddingBottom: 3, children: [
+            /* @__PURE__ */ jsx(Typography, { variant: "omega", fontWeight: "semiBold", as: "label", children: "Additional display field 1 (optional)" }),
+            /* @__PURE__ */ jsx(Box, { paddingTop: 2, children: /* @__PURE__ */ jsxs(
+              "select",
+              {
+                value: additionalDisplayField1,
+                onChange: (e) => {
+                  setAdditionalDisplayField1(e.target.value);
+                },
+                disabled: isSubmitting,
+                style: {
+                  width: "100%",
+                  padding: "8px 12px",
+                  borderRadius: "4px",
+                  border: "1px solid #dcdce4",
+                  fontSize: "14px",
+                  backgroundColor: "#ffffff",
+                  cursor: isSubmitting ? "not-allowed" : "pointer"
+                },
+                children: [
+                  /* @__PURE__ */ jsx("option", { value: "", children: "None" }),
+                  getDisplayableFieldsMemo.filter(
+                    (fieldName) => fieldName !== selectedDisplayField && fieldName !== additionalDisplayField2
+                  ).map((fieldName) => {
+                    const attr = contentType?.attributes?.[fieldName];
+                    const fieldType = attr?.type === "enumeration" ? " (enum)" : attr?.type === "relation" ? " (relation)" : attr?.type === "media" ? " (media)" : "";
+                    return /* @__PURE__ */ jsxs("option", { value: fieldName, children: [
+                      fieldName,
+                      fieldType
+                    ] }, fieldName);
+                  })
+                ]
+              }
+            ) })
+          ] }),
+          /* @__PURE__ */ jsxs(Box, { paddingBottom: 3, children: [
+            /* @__PURE__ */ jsx(Typography, { variant: "omega", fontWeight: "semiBold", as: "label", children: "Additional display field 2 (optional)" }),
+            /* @__PURE__ */ jsx(Box, { paddingTop: 2, children: /* @__PURE__ */ jsxs(
+              "select",
+              {
+                value: additionalDisplayField2,
+                onChange: (e) => {
+                  setAdditionalDisplayField2(e.target.value);
+                },
+                disabled: isSubmitting,
+                style: {
+                  width: "100%",
+                  padding: "8px 12px",
+                  borderRadius: "4px",
+                  border: "1px solid #dcdce4",
+                  fontSize: "14px",
+                  backgroundColor: "#ffffff",
+                  cursor: isSubmitting ? "not-allowed" : "pointer"
+                },
+                children: [
+                  /* @__PURE__ */ jsx("option", { value: "", children: "None" }),
+                  getDisplayableFieldsMemo.filter(
+                    (fieldName) => fieldName !== selectedDisplayField && fieldName !== additionalDisplayField1
+                  ).map((fieldName) => {
+                    const attr = contentType?.attributes?.[fieldName];
+                    const fieldType = attr?.type === "enumeration" ? " (enum)" : attr?.type === "relation" ? " (relation)" : attr?.type === "media" ? " (media)" : "";
+                    return /* @__PURE__ */ jsxs("option", { value: fieldName, children: [
+                      fieldName,
+                      fieldType
+                    ] }, fieldName);
+                  })
+                ]
+              }
+            ) })
+          ] })
+        ] }),
         mode === "scoped" && /* @__PURE__ */ jsxs(Box, { paddingBottom: 4, children: [
           /* @__PURE__ */ jsxs(Box, { paddingBottom: 3, children: [
             /* @__PURE__ */ jsx(Typography, { variant: "omega", fontWeight: "semiBold", as: "label", children: "Filter by field" }),
@@ -837,7 +1064,10 @@ const SortModal = ({ uid, mainField, contentType, mode = "global", label }) => {
           SortModalBody,
           {
             entriesFetchState,
-            mainField,
+            mainField: selectedDisplayField,
+            additionalFields: [additionalDisplayField1, additionalDisplayField2].filter(
+              (f) => f && f !== ""
+            ),
             contentType,
             handleDragEnd,
             disabled: isSubmitting

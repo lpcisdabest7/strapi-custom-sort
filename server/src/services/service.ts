@@ -121,12 +121,14 @@ const service = ({ strapi }: { strapi: Core.Strapi }) => ({
     filters,
     locale,
     relationFields,
+    additionalFields,
   }: {
     uid: ContentTypeUID;
     mainField: string;
     filters: Filters | undefined;
     locale: Locale | undefined;
     relationFields?: string[];
+    additionalFields?: string[];
   }) {
     // Cache contentType to avoid multiple lookups
     let contentType: any;
@@ -142,29 +144,54 @@ const service = ({ strapi }: { strapi: Core.Strapi }) => ({
     // Only add mainField if it's NOT a relation field
     const fields: string[] = ['documentId'];
 
+    // Helper function to check if a field is a relation field
+    const isRelationFieldType = (attribute: any): boolean => {
+      return (
+        attribute.type === 'relation' ||
+        attribute.type === 'media' ||
+        (attribute.relation && typeof attribute.relation === 'string')
+      );
+    };
+
     // Validate mainField exists in content type and is NOT a relation field
     if (mainField !== 'documentId' && attributes[mainField]) {
       const attribute = attributes[mainField];
-      // Check if mainField is NOT a relation field
-      const isRelationField =
-        attribute.type === 'relation' ||
-        attribute.type === 'media' ||
-        (attribute.relation && typeof attribute.relation === 'string');
-
-      if (!isRelationField) {
+      if (!isRelationFieldType(attribute)) {
         // Only add non-relation fields to fields array
         fields.push(mainField);
       }
     }
 
+    // Add additional fields if they are not relation fields
+    if (additionalFields && additionalFields.length > 0) {
+      additionalFields.forEach((fieldName) => {
+        if (fieldName && fieldName !== 'documentId' && attributes[fieldName]) {
+          const attribute = attributes[fieldName];
+          if (!isRelationFieldType(attribute) && !fields.includes(fieldName)) {
+            fields.push(fieldName);
+          }
+        }
+      });
+    }
+
     // Validate and filter relation fields to only include actual relation fields
+    // Include relation fields from both relationFields param and additionalFields
     const validRelationFields: string[] = [];
     const systemFields = ['createdBy', 'updatedBy', 'localizations', 'locale'];
+    const allPotentialRelationFields = [
+      ...(relationFields || []),
+      ...(additionalFields || []),
+    ];
 
-    if (relationFields && relationFields.length > 0) {
-      relationFields.forEach((field) => {
+    if (allPotentialRelationFields.length > 0) {
+      allPotentialRelationFields.forEach((field) => {
         // Skip system fields
         if (systemFields.includes(field)) {
+          return;
+        }
+
+        // Skip if already added
+        if (validRelationFields.includes(field)) {
           return;
         }
 
