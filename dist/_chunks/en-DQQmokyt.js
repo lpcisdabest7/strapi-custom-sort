@@ -9,3 +9,4 @@ const en = {
   "sortable-entries.notification.failure": "Failed to submit data! Please reopen the modal and try again."
 };
 exports.default = en;
+//# sourceMappingURL=en-DQQmokyt.js.map

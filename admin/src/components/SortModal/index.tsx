@@ -585,18 +585,29 @@ const SortModal = ({ uid, mainField, contentType, mode = 'global', label }: Sort
         additionalDisplayField2,
       ].filter((field) => field && field !== '');
 
-      // Check if any display field is a system field
-      const useRelationFields = allDisplayFields.some((field) => isSystemField(field));
+      // Determine which relation fields should be populated on the backend.
+      // - Always include relation/media fields that are used as display fields.
+      // - If no relation display field is selected, keep the previous behaviour:
+      //   when using only system fields as display fields, fall back to all
+      //   relation fields from the content type (for backwards compatibility).
+      const relationDisplayFields: string[] = allDisplayFields.filter((fieldName) => {
+        const attr = contentType?.attributes?.[fieldName];
+        return attr?.type === 'relation' || attr?.type === 'media';
+      });
+
+      const hasSystemDisplayField = allDisplayFields.some((field) => isSystemField(field));
+
+      let relationFieldsForPopulate: string[] = [...relationDisplayFields];
+
+      if (relationFieldsForPopulate.length === 0 && hasSystemDisplayField) {
+        relationFieldsForPopulate = getFilterableFieldsMemo.filter((fieldName) => {
+          const attr = contentType?.attributes?.[fieldName];
+          return attr?.type === 'relation' || attr?.type === 'media';
+        });
+      }
+
       const relationFieldsParam =
-        useRelationFields && getFilterableFieldsMemo.length > 0
-          ? getFilterableFieldsMemo
-              .filter((field) => {
-                // Only include relation fields for populate, not enumeration
-                const attr = contentType?.attributes?.[field];
-                return attr?.type === 'relation' || attr?.type === 'media';
-              })
-              .join(',')
-          : undefined;
+        relationFieldsForPopulate.length > 0 ? relationFieldsForPopulate.join(',') : undefined;
 
       // Collect additional fields (excluding empty and main field)
       const additionalFieldsArray = [additionalDisplayField1, additionalDisplayField2].filter(

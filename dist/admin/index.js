@@ -744,11 +744,19 @@ const SortModal = ({ uid, mainField, contentType, mode = "global", label }) => {
         additionalDisplayField1,
         additionalDisplayField2
       ].filter((field) => field && field !== "");
-      const useRelationFields = allDisplayFields.some((field) => isSystemField2(field));
-      const relationFieldsParam = useRelationFields && getFilterableFieldsMemo.length > 0 ? getFilterableFieldsMemo.filter((field) => {
-        const attr = contentType?.attributes?.[field];
+      const relationDisplayFields = allDisplayFields.filter((fieldName) => {
+        const attr = contentType?.attributes?.[fieldName];
         return attr?.type === "relation" || attr?.type === "media";
-      }).join(",") : void 0;
+      });
+      const hasSystemDisplayField = allDisplayFields.some((field) => isSystemField2(field));
+      let relationFieldsForPopulate = [...relationDisplayFields];
+      if (relationFieldsForPopulate.length === 0 && hasSystemDisplayField) {
+        relationFieldsForPopulate = getFilterableFieldsMemo.filter((fieldName) => {
+          const attr = contentType?.attributes?.[fieldName];
+          return attr?.type === "relation" || attr?.type === "media";
+        });
+      }
+      const relationFieldsParam = relationFieldsForPopulate.length > 0 ? relationFieldsForPopulate.join(",") : void 0;
       const additionalFieldsArray = [additionalDisplayField1, additionalDisplayField2].filter(
         (field) => field && field !== "" && field !== selectedDisplayField
       );
@@ -1219,3 +1227,4 @@ const index = {
   }
 };
 module.exports = index;
+//# sourceMappingURL=index.js.map
