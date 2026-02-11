@@ -25,6 +25,10 @@ const mockService = vi.fn(() => {
 
 const mockStrapi = {
   service: mockService,
+  // Ensure minSortOrder defaults to 0 for deterministic tests.
+  config: {
+    get: vi.fn(() => 0),
+  },
   log: {
     debug: vi.fn(),
     info: vi.fn(),

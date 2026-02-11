@@ -23,7 +23,15 @@ const config$1 = {
    *   current content type and is of type "integer".
    * - This allows using different field names such as "sort", "order" or "orderIndex".
    */
-  sortFieldCandidates: ["sort", "sortOrder", "order", "orderIndex"]
+  sortFieldCandidates: ["sort", "sortOrder", "order", "orderIndex"],
+  /**
+   * Page size used when fetching entries for the sortable modal.
+   *
+   * Strapi's document service defaults to 100 items when pagination is omitted.
+   * We explicitly set a higher page size so collections with >100 records can
+   * still be fully sorted in the UI.
+   */
+  entriesPageSize: 1e3
 };
 var DocumentAction = /* @__PURE__ */ ((DocumentAction2) => {
   DocumentAction2["Create"] = "create";
@@ -383,6 +391,7 @@ const service = ({ strapi: strapi2 }) => ({
         // Note: Strapi will automatically optimize populate queries
         populate: validRelationFields.length > 0 ? validRelationFields : void 0,
         sort: `${sortField}:asc`,
+        pagination: { page: 1, pageSize: config$1.entriesPageSize },
         filters,
         locale
       });
@@ -430,6 +439,7 @@ const service = ({ strapi: strapi2 }) => ({
     const prevSortedEntries = await strapi2.documents(uid).findMany({
       fields: ["documentId", sortField],
       sort: `${sortField}:asc`,
+      pagination: { page: 1, pageSize: config$1.entriesPageSize },
       locale,
       // If we have filters, apply them to limit the query scope
       ...filters ? { filters } : {}
@@ -490,6 +500,7 @@ const service = ({ strapi: strapi2 }) => ({
     const scopedEntries = await strapi2.documents(uid).findMany({
       fields: ["documentId", sortField],
       sort: `${sortField}:asc`,
+      pagination: { page: 1, pageSize: config$1.entriesPageSize },
       filters,
       locale
     });

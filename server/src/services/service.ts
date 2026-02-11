@@ -240,6 +240,7 @@ const service = ({ strapi }: { strapi: Core.Strapi }) => ({
         // Note: Strapi will automatically optimize populate queries
         populate: validRelationFields.length > 0 ? validRelationFields : undefined,
         sort: `${sortField}:asc`,
+        pagination: { page: 1, pageSize: config.entriesPageSize },
         filters,
         locale,
       });
@@ -299,6 +300,7 @@ const service = ({ strapi }: { strapi: Core.Strapi }) => ({
     const prevSortedEntries = await strapi.documents(uid).findMany({
       fields: ['documentId', sortField],
       sort: `${sortField}:asc`,
+      pagination: { page: 1, pageSize: config.entriesPageSize },
       locale,
       // If we have filters, apply them to limit the query scope
       ...(filters ? { filters } : {}),
@@ -410,6 +412,7 @@ const service = ({ strapi }: { strapi: Core.Strapi }) => ({
     const scopedEntries = await strapi.documents(uid).findMany({
       fields: ['documentId', sortField],
       sort: `${sortField}:asc`,
+      pagination: { page: 1, pageSize: config.entriesPageSize },
       filters,
       locale,
     });

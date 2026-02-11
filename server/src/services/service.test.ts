@@ -41,6 +41,19 @@ const mockDocuments = vi.fn(() => {
 
 const mockStrapi = {
   documents: mockDocuments,
+  // Minimal content-type registry mock used by the service to validate fields and read min values.
+  get: vi.fn(() => ({
+    get: vi.fn(() => ({
+      attributes: {
+        name: { type: 'string' },
+        sortOrder: { type: 'integer', min: 0 },
+      },
+    })),
+  })),
+  // Ensure minSortOrder defaults to 0 for deterministic tests.
+  config: {
+    get: vi.fn(() => 0),
+  },
   log: {
     debug: vi.fn(),
     info: vi.fn(),
@@ -88,6 +101,7 @@ describe(`test method "fetchEntries()"`, () => {
     expect(mockFindMany).toHaveBeenCalledWith({
       fields: ['documentId', mainField],
       sort: 'sortOrder:asc',
+      pagination: { page: 1, pageSize: 1000 },
       filters,
       locale,
     });
@@ -160,6 +174,7 @@ describe(`test method "updateSortOrder()"`, () => {
     expect(mockFindMany).toHaveBeenCalledWith({
       fields: ['documentId', 'sortOrder'],
       sort: 'sortOrder:asc',
+      pagination: { page: 1, pageSize: 1000 },
       locale,
     });
   });

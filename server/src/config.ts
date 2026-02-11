@@ -20,4 +20,13 @@ export const config = {
    * - This allows using different field names such as "sort", "order" or "orderIndex".
    */
   sortFieldCandidates: ['sort', 'sortOrder', 'order', 'orderIndex'] as const,
+
+  /**
+   * Page size used when fetching entries for the sortable modal.
+   *
+   * Strapi's document service defaults to 100 items when pagination is omitted.
+   * We explicitly set a higher page size so collections with >100 records can
+   * still be fully sorted in the UI.
+   */
+  entriesPageSize: 500,
 } as const;
