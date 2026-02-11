@@ -16,9 +16,9 @@ import {
   Divider,
   Flex,
   Grid,
-  TooltipProvider,
 } from '@strapi/design-system';
 import { Drag } from '@strapi/icons';
+import * as Tooltip from '@radix-ui/react-tooltip';
 
 import { FetchStatus } from '../../constants';
 import { prefixKey } from '../../utils/prefixKey';
@@ -857,14 +857,14 @@ const SortModal = ({ uid, mainField, contentType, mode = 'global', label }: Sort
           </IconButton>
         )}
       </Modal.Trigger>
-      <Modal.Content>
-        <Modal.Header>
-          <Modal.Title>
-            <FormattedMessage id={prefixKey('title')} />
-          </Modal.Title>
-        </Modal.Header>
-        <Modal.Body>
-          <TooltipProvider>
+      <Tooltip.Provider>
+        <Modal.Content>
+          <Modal.Header>
+            <Modal.Title>
+              <FormattedMessage id={prefixKey('title')} />
+            </Modal.Title>
+          </Modal.Header>
+          <Modal.Body>
             {/* Main Display Field Section */}
             <Box paddingBottom={4}>
               <Typography variant="omega" fontWeight="semiBold" as="label" textColor="neutral800">
@@ -1154,24 +1154,24 @@ const SortModal = ({ uid, mainField, contentType, mode = 'global', label }: Sort
                 disabled={isSubmitting}
               />
             )}
-          </TooltipProvider>
-        </Modal.Body>
-        <Modal.Footer>
-          <Modal.Close>
-            <Button variant="tertiary">
-              <FormattedMessage id={prefixKey('cancel-button.title')} />
+          </Modal.Body>
+          <Modal.Footer>
+            <Modal.Close>
+              <Button variant="tertiary">
+                <FormattedMessage id={prefixKey('cancel-button.title')} />
+              </Button>
+            </Modal.Close>
+            <Button
+              type="submit"
+              onClick={handleSubmit}
+              disabled={isSubmitButtonDisabled}
+              loading={isSubmitButtonLoading}
+            >
+              <FormattedMessage id={prefixKey('submit-button.title')} />
             </Button>
-          </Modal.Close>
-          <Button
-            type="submit"
-            onClick={handleSubmit}
-            disabled={isSubmitButtonDisabled}
-            loading={isSubmitButtonLoading}
-          >
-            <FormattedMessage id={prefixKey('submit-button.title')} />
-          </Button>
-        </Modal.Footer>
-      </Modal.Content>
+          </Modal.Footer>
+        </Modal.Content>
+      </Tooltip.Provider>
     </Modal.Root>
   );
 };
