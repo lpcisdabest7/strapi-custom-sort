@@ -4,7 +4,7 @@ import { useNotification, useFetchClient, useQueryParams, unstable_useContentMan
 import { useSortable, sortableKeyboardCoordinates, SortableContext, verticalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
 import { useIntl, FormattedMessage } from "react-intl";
 import { useSearchParams } from "react-router-dom";
-import { Box, Flex, Typography, EmptyStateLayout, Loader, Modal, Button, IconButton, SingleSelect, SingleSelectOption, Divider, Grid, TextInput } from "@strapi/design-system";
+import { Box, Flex, Typography, EmptyStateLayout, Loader, Modal, Button, IconButton, TooltipProvider, SingleSelect, SingleSelectOption, Divider, Grid, TextInput } from "@strapi/design-system";
 import { Drag } from "@strapi/icons";
 import { useSensors, useSensor, PointerSensor, KeyboardSensor, DndContext, closestCenter } from "@dnd-kit/core";
 import styled from "styled-components";
@@ -925,9 +925,9 @@ const SortModal = ({ uid, mainField, contentType, mode = "global", label }) => {
     /* @__PURE__ */ jsx(Modal.Trigger, { children: mode === "scoped" && label ? /* @__PURE__ */ jsx(Button, { variant: "secondary", size: "S", children: label }) : /* @__PURE__ */ jsx(IconButton, { children: /* @__PURE__ */ jsx(Drag, {}) }) }),
     /* @__PURE__ */ jsxs(Modal.Content, { children: [
       /* @__PURE__ */ jsx(Modal.Header, { children: /* @__PURE__ */ jsx(Modal.Title, { children: /* @__PURE__ */ jsx(FormattedMessage, { id: prefixKey("title") }) }) }),
-      /* @__PURE__ */ jsxs(Modal.Body, { children: [
+      /* @__PURE__ */ jsx(Modal.Body, { children: /* @__PURE__ */ jsxs(TooltipProvider, { children: [
         /* @__PURE__ */ jsxs(Box, { paddingBottom: 4, children: [
-          /* @__PURE__ */ jsx(Typography, { variant: "omega", fontWeight: "semiBold", as: "label", textColor: "neutral800", children: "Display field" }),
+          /* @__PURE__ */ jsx(Typography, { variant: "omega", fontWeight: "semiBold", as: "label", textColor: "neutral800", children: "Sort by field" }),
           /* @__PURE__ */ jsx(Box, { paddingTop: 2, children: /* @__PURE__ */ jsxs(
             SingleSelect,
             {
@@ -1136,7 +1136,7 @@ const SortModal = ({ uid, mainField, contentType, mode = "global", label }) => {
             disabled: isSubmitting
           }
         )
-      ] }),
+      ] }) }),
       /* @__PURE__ */ jsxs(Modal.Footer, { children: [
         /* @__PURE__ */ jsx(Modal.Close, { children: /* @__PURE__ */ jsx(Button, { variant: "tertiary", children: /* @__PURE__ */ jsx(FormattedMessage, { id: prefixKey("cancel-button.title") }) }) }),
         /* @__PURE__ */ jsx(

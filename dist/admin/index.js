@@ -928,9 +928,9 @@ const SortModal = ({ uid, mainField, contentType, mode = "global", label }) => {
     /* @__PURE__ */ jsxRuntime.jsx(designSystem.Modal.Trigger, { children: mode === "scoped" && label ? /* @__PURE__ */ jsxRuntime.jsx(designSystem.Button, { variant: "secondary", size: "S", children: label }) : /* @__PURE__ */ jsxRuntime.jsx(designSystem.IconButton, { children: /* @__PURE__ */ jsxRuntime.jsx(icons.Drag, {}) }) }),
     /* @__PURE__ */ jsxRuntime.jsxs(designSystem.Modal.Content, { children: [
       /* @__PURE__ */ jsxRuntime.jsx(designSystem.Modal.Header, { children: /* @__PURE__ */ jsxRuntime.jsx(designSystem.Modal.Title, { children: /* @__PURE__ */ jsxRuntime.jsx(reactIntl.FormattedMessage, { id: prefixKey("title") }) }) }),
-      /* @__PURE__ */ jsxRuntime.jsxs(designSystem.Modal.Body, { children: [
+      /* @__PURE__ */ jsxRuntime.jsx(designSystem.Modal.Body, { children: /* @__PURE__ */ jsxRuntime.jsxs(designSystem.TooltipProvider, { children: [
         /* @__PURE__ */ jsxRuntime.jsxs(designSystem.Box, { paddingBottom: 4, children: [
-          /* @__PURE__ */ jsxRuntime.jsx(designSystem.Typography, { variant: "omega", fontWeight: "semiBold", as: "label", textColor: "neutral800", children: "Display field" }),
+          /* @__PURE__ */ jsxRuntime.jsx(designSystem.Typography, { variant: "omega", fontWeight: "semiBold", as: "label", textColor: "neutral800", children: "Sort by field" }),
           /* @__PURE__ */ jsxRuntime.jsx(designSystem.Box, { paddingTop: 2, children: /* @__PURE__ */ jsxRuntime.jsxs(
             designSystem.SingleSelect,
             {
@@ -1139,7 +1139,7 @@ const SortModal = ({ uid, mainField, contentType, mode = "global", label }) => {
             disabled: isSubmitting
           }
         )
-      ] }),
+      ] }) }),
       /* @__PURE__ */ jsxRuntime.jsxs(designSystem.Modal.Footer, { children: [
         /* @__PURE__ */ jsxRuntime.jsx(designSystem.Modal.Close, { children: /* @__PURE__ */ jsxRuntime.jsx(designSystem.Button, { variant: "tertiary", children: /* @__PURE__ */ jsxRuntime.jsx(reactIntl.FormattedMessage, { id: prefixKey("cancel-button.title") }) }) }),
         /* @__PURE__ */ jsxRuntime.jsx(
