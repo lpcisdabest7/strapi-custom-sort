@@ -71,7 +71,9 @@ const getRelationDisplayValue = (relationItem: any): string => {
   }
 
   // Try common display fields first (expanded list)
+  // Priority: key first (most common identifier), then other fields
   const displayFields = [
+    'key', // Highest priority - most common identifier field
     'title',
     'name',
     'label',
@@ -85,18 +87,40 @@ const getRelationDisplayValue = (relationItem: any): string => {
   ];
   for (const field of displayFields) {
     const value = relationItem[field];
-    if (value !== null && value !== undefined && value !== '') {
+    // Only return if value is a primitive string/number, not object/array/component
+    if (
+      value !== null &&
+      value !== undefined &&
+      value !== '' &&
+      typeof value !== 'object' &&
+      !Array.isArray(value)
+    ) {
       return String(value);
     }
   }
   // Try to find any string field that might be a display field
-  // (excluding system fields and objects)
+  // (excluding system fields, objects, arrays, and enum fields that are not good for display)
+  const excludedFields = [
+    'documentId',
+    'id',
+    'createdAt',
+    'updatedAt',
+    'publishedAt',
+    'createdBy',
+    'updatedBy',
+    'locale',
+    'localizations',
+    'displayStyle', // Exclude enum fields that are not good identifiers
+    'tag', // Exclude enum fields
+  ];
   for (const key in relationItem) {
     if (
       relationItem.hasOwnProperty(key) &&
       typeof relationItem[key] === 'string' &&
       relationItem[key] !== '' &&
-      !['documentId', 'id', 'createdAt', 'updatedAt', 'publishedAt'].includes(key)
+      !excludedFields.includes(key) &&
+      // Exclude fields that look like IDs (long alphanumeric strings)
+      !/^[a-z0-9]{20,}$/i.test(relationItem[key])
     ) {
       return relationItem[key];
     }

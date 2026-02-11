@@ -1,12 +1,11 @@
-import { useRef, useEffect, createContext, useMemo, createElement, useContext, forwardRef, Children, isValidElement, cloneElement, Fragment, useState, useCallback } from "react";
-import { jsx, jsxs, Fragment as Fragment$1 } from "react/jsx-runtime";
+import { useRef, useEffect, useState, useMemo, useCallback } from "react";
+import { jsx, jsxs, Fragment } from "react/jsx-runtime";
 import { useNotification, useFetchClient, useQueryParams, unstable_useContentManagerContext } from "@strapi/strapi/admin";
 import { useSortable, sortableKeyboardCoordinates, SortableContext, verticalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
 import { useIntl, FormattedMessage } from "react-intl";
 import { useSearchParams } from "react-router-dom";
 import { Box, Flex, Typography, EmptyStateLayout, Loader, Modal, Button, IconButton, SingleSelect, SingleSelectOption, Divider, Grid, TextInput } from "@strapi/design-system";
 import { Drag } from "@strapi/icons";
-import "react-dom";
 import { useSensors, useSensor, PointerSensor, KeyboardSensor, DndContext, closestCenter } from "@dnd-kit/core";
 import styled from "styled-components";
 const __variableDynamicImportRuntimeHelper = (glob, path, segs) => {
@@ -55,331 +54,6 @@ const config$1 = {
    */
   sortFieldCandidates: ["sort", "sortOrder", "order", "orderIndex"]
 };
-function _extends() {
-  return _extends = Object.assign ? Object.assign.bind() : function(n) {
-    for (var e = 1; e < arguments.length; e++) {
-      var t = arguments[e];
-      for (var r in t) ({}).hasOwnProperty.call(t, r) && (n[r] = t[r]);
-    }
-    return n;
-  }, _extends.apply(null, arguments);
-}
-function $6ed0406888f73fc4$var$setRef(ref, value) {
-  if (typeof ref === "function") ref(value);
-  else if (ref !== null && ref !== void 0) ref.current = value;
-}
-function $6ed0406888f73fc4$export$43e446d32b3d21af(...refs) {
-  return (node) => refs.forEach(
-    (ref) => $6ed0406888f73fc4$var$setRef(ref, node)
-  );
-}
-function $c512c27ab02ef895$export$50c7b4e9d9f19c1(scopeName, createContextScopeDeps = []) {
-  let defaultContexts = [];
-  function $c512c27ab02ef895$export$fd42f52fd3ae1109(rootComponentName, defaultContext) {
-    const BaseContext = /* @__PURE__ */ createContext(defaultContext);
-    const index2 = defaultContexts.length;
-    defaultContexts = [
-      ...defaultContexts,
-      defaultContext
-    ];
-    function Provider(props) {
-      const { scope, children, ...context } = props;
-      const Context = (scope === null || scope === void 0 ? void 0 : scope[scopeName][index2]) || BaseContext;
-      const value = useMemo(
-        () => context,
-        Object.values(context)
-      );
-      return /* @__PURE__ */ createElement(Context.Provider, {
-        value
-      }, children);
-    }
-    function useContext$1(consumerName, scope) {
-      const Context = (scope === null || scope === void 0 ? void 0 : scope[scopeName][index2]) || BaseContext;
-      const context = useContext(Context);
-      if (context) return context;
-      if (defaultContext !== void 0) return defaultContext;
-      throw new Error(`\`${consumerName}\` must be used within \`${rootComponentName}\``);
-    }
-    Provider.displayName = rootComponentName + "Provider";
-    return [
-      Provider,
-      useContext$1
-    ];
-  }
-  const createScope = () => {
-    const scopeContexts = defaultContexts.map((defaultContext) => {
-      return /* @__PURE__ */ createContext(defaultContext);
-    });
-    return function useScope(scope) {
-      const contexts = (scope === null || scope === void 0 ? void 0 : scope[scopeName]) || scopeContexts;
-      return useMemo(
-        () => ({
-          [`__scope${scopeName}`]: {
-            ...scope,
-            [scopeName]: contexts
-          }
-        }),
-        [
-          scope,
-          contexts
-        ]
-      );
-    };
-  };
-  createScope.scopeName = scopeName;
-  return [
-    $c512c27ab02ef895$export$fd42f52fd3ae1109,
-    $c512c27ab02ef895$var$composeContextScopes(createScope, ...createContextScopeDeps)
-  ];
-}
-function $c512c27ab02ef895$var$composeContextScopes(...scopes) {
-  const baseScope = scopes[0];
-  if (scopes.length === 1) return baseScope;
-  const createScope1 = () => {
-    const scopeHooks = scopes.map(
-      (createScope) => ({
-        useScope: createScope(),
-        scopeName: createScope.scopeName
-      })
-    );
-    return function useComposedScopes(overrideScopes) {
-      const nextScopes1 = scopeHooks.reduce((nextScopes, { useScope, scopeName }) => {
-        const scopeProps = useScope(overrideScopes);
-        const currentScope = scopeProps[`__scope${scopeName}`];
-        return {
-          ...nextScopes,
-          ...currentScope
-        };
-      }, {});
-      return useMemo(
-        () => ({
-          [`__scope${baseScope.scopeName}`]: nextScopes1
-        }),
-        [
-          nextScopes1
-        ]
-      );
-    };
-  };
-  createScope1.scopeName = baseScope.scopeName;
-  return createScope1;
-}
-const $5e63c961fc1ce211$export$8c6ed5c666ac1360 = /* @__PURE__ */ forwardRef((props, forwardedRef) => {
-  const { children, ...slotProps } = props;
-  const childrenArray = Children.toArray(children);
-  const slottable = childrenArray.find($5e63c961fc1ce211$var$isSlottable);
-  if (slottable) {
-    const newElement = slottable.props.children;
-    const newChildren = childrenArray.map((child) => {
-      if (child === slottable) {
-        if (Children.count(newElement) > 1) return Children.only(null);
-        return /* @__PURE__ */ isValidElement(newElement) ? newElement.props.children : null;
-      } else return child;
-    });
-    return /* @__PURE__ */ createElement($5e63c961fc1ce211$var$SlotClone, _extends({}, slotProps, {
-      ref: forwardedRef
-    }), /* @__PURE__ */ isValidElement(newElement) ? /* @__PURE__ */ cloneElement(newElement, void 0, newChildren) : null);
-  }
-  return /* @__PURE__ */ createElement($5e63c961fc1ce211$var$SlotClone, _extends({}, slotProps, {
-    ref: forwardedRef
-  }), children);
-});
-$5e63c961fc1ce211$export$8c6ed5c666ac1360.displayName = "Slot";
-const $5e63c961fc1ce211$var$SlotClone = /* @__PURE__ */ forwardRef((props, forwardedRef) => {
-  const { children, ...slotProps } = props;
-  if (/* @__PURE__ */ isValidElement(children)) return /* @__PURE__ */ cloneElement(children, {
-    ...$5e63c961fc1ce211$var$mergeProps(slotProps, children.props),
-    ref: forwardedRef ? $6ed0406888f73fc4$export$43e446d32b3d21af(forwardedRef, children.ref) : children.ref
-  });
-  return Children.count(children) > 1 ? Children.only(null) : null;
-});
-$5e63c961fc1ce211$var$SlotClone.displayName = "SlotClone";
-const $5e63c961fc1ce211$export$d9f1ccf0bdb05d45 = ({ children }) => {
-  return /* @__PURE__ */ createElement(Fragment, null, children);
-};
-function $5e63c961fc1ce211$var$isSlottable(child) {
-  return /* @__PURE__ */ isValidElement(child) && child.type === $5e63c961fc1ce211$export$d9f1ccf0bdb05d45;
-}
-function $5e63c961fc1ce211$var$mergeProps(slotProps, childProps) {
-  const overrideProps = {
-    ...childProps
-  };
-  for (const propName in childProps) {
-    const slotPropValue = slotProps[propName];
-    const childPropValue = childProps[propName];
-    const isHandler = /^on[A-Z]/.test(propName);
-    if (isHandler) {
-      if (slotPropValue && childPropValue) overrideProps[propName] = (...args) => {
-        childPropValue(...args);
-        slotPropValue(...args);
-      };
-      else if (slotPropValue) overrideProps[propName] = slotPropValue;
-    } else if (propName === "style") overrideProps[propName] = {
-      ...slotPropValue,
-      ...childPropValue
-    };
-    else if (propName === "className") overrideProps[propName] = [
-      slotPropValue,
-      childPropValue
-    ].filter(Boolean).join(" ");
-  }
-  return {
-    ...slotProps,
-    ...overrideProps
-  };
-}
-const $8927f6f2acc4f386$var$NODES = [
-  "a",
-  "button",
-  "div",
-  "form",
-  "h2",
-  "h3",
-  "img",
-  "input",
-  "label",
-  "li",
-  "nav",
-  "ol",
-  "p",
-  "span",
-  "svg",
-  "ul"
-];
-const $8927f6f2acc4f386$export$250ffa63cdc0d034 = $8927f6f2acc4f386$var$NODES.reduce((primitive, node) => {
-  const Node = /* @__PURE__ */ forwardRef((props, forwardedRef) => {
-    const { asChild, ...primitiveProps } = props;
-    const Comp = asChild ? $5e63c961fc1ce211$export$8c6ed5c666ac1360 : node;
-    useEffect(() => {
-      window[Symbol.for("radix-ui")] = true;
-    }, []);
-    return /* @__PURE__ */ createElement(Comp, _extends({}, primitiveProps, {
-      ref: forwardedRef
-    }));
-  });
-  Node.displayName = `Primitive.${node}`;
-  return {
-    ...primitive,
-    [node]: Node
-  };
-}, {});
-const $7e8f5cd07187803e$export$21b07c8f274aebd5 = /* @__PURE__ */ forwardRef((props, forwardedRef) => {
-  const { children, width = 10, height = 5, ...arrowProps } = props;
-  return /* @__PURE__ */ createElement($8927f6f2acc4f386$export$250ffa63cdc0d034.svg, _extends({}, arrowProps, {
-    ref: forwardedRef,
-    width,
-    height,
-    viewBox: "0 0 30 10",
-    preserveAspectRatio: "none"
-  }), props.asChild ? children : /* @__PURE__ */ createElement("polygon", {
-    points: "0,0 30,0 15,10"
-  }));
-});
-const $7e8f5cd07187803e$export$be92b6f5f03c0fe9 = $7e8f5cd07187803e$export$21b07c8f274aebd5;
-const $cf1ac5d9fe0e8206$var$POPPER_NAME = "Popper";
-const [$cf1ac5d9fe0e8206$var$createPopperContext, $cf1ac5d9fe0e8206$export$722aac194ae923] = $c512c27ab02ef895$export$50c7b4e9d9f19c1($cf1ac5d9fe0e8206$var$POPPER_NAME);
-const [$cf1ac5d9fe0e8206$var$PopperProvider, $cf1ac5d9fe0e8206$var$usePopperContext] = $cf1ac5d9fe0e8206$var$createPopperContext($cf1ac5d9fe0e8206$var$POPPER_NAME);
-const $cf1ac5d9fe0e8206$var$CONTENT_NAME = "PopperContent";
-const [$cf1ac5d9fe0e8206$var$PopperContentProvider, $cf1ac5d9fe0e8206$var$useContentContext] = $cf1ac5d9fe0e8206$var$createPopperContext($cf1ac5d9fe0e8206$var$CONTENT_NAME);
-const $cf1ac5d9fe0e8206$var$ARROW_NAME = "PopperArrow";
-const $cf1ac5d9fe0e8206$var$OPPOSITE_SIDE = {
-  top: "bottom",
-  right: "left",
-  bottom: "top",
-  left: "right"
-};
-const $cf1ac5d9fe0e8206$export$79d62cd4e10a3fd0 = /* @__PURE__ */ forwardRef(function $cf1ac5d9fe0e8206$export$79d62cd4e10a3fd02(props, forwardedRef) {
-  const { __scopePopper, ...arrowProps } = props;
-  const contentContext = $cf1ac5d9fe0e8206$var$useContentContext($cf1ac5d9fe0e8206$var$ARROW_NAME, __scopePopper);
-  const baseSide = $cf1ac5d9fe0e8206$var$OPPOSITE_SIDE[contentContext.placedSide];
-  return (
-    // we have to use an extra wrapper because `ResizeObserver` (used by `useSize`)
-    // doesn't report size as we'd expect on SVG elements.
-    // it reports their bounding box which is effectively the largest path inside the SVG.
-    /* @__PURE__ */ createElement("span", {
-      ref: contentContext.onArrowChange,
-      style: {
-        position: "absolute",
-        left: contentContext.arrowX,
-        top: contentContext.arrowY,
-        [baseSide]: 0,
-        transformOrigin: {
-          top: "",
-          right: "0 0",
-          bottom: "center 0",
-          left: "100% 0"
-        }[contentContext.placedSide],
-        transform: {
-          top: "translateY(100%)",
-          right: "translateY(50%) rotate(90deg) translateX(-50%)",
-          bottom: `rotate(180deg)`,
-          left: "translateY(50%) rotate(-90deg) translateX(50%)"
-        }[contentContext.placedSide],
-        visibility: contentContext.shouldHideArrow ? "hidden" : void 0
-      }
-    }, /* @__PURE__ */ createElement($7e8f5cd07187803e$export$be92b6f5f03c0fe9, _extends({}, arrowProps, {
-      ref: forwardedRef,
-      style: {
-        ...arrowProps.style,
-        // ensures the element can be measured correctly (mostly for if SVG)
-        display: "block"
-      }
-    })))
-  );
-});
-/* @__PURE__ */ Object.assign($cf1ac5d9fe0e8206$export$79d62cd4e10a3fd0, {
-  displayName: $cf1ac5d9fe0e8206$var$ARROW_NAME
-});
-const [$a093c7e1ec25a057$var$createTooltipContext] = $c512c27ab02ef895$export$50c7b4e9d9f19c1("Tooltip", [
-  $cf1ac5d9fe0e8206$export$722aac194ae923
-]);
-$cf1ac5d9fe0e8206$export$722aac194ae923();
-const $a093c7e1ec25a057$var$PROVIDER_NAME = "TooltipProvider";
-const $a093c7e1ec25a057$var$DEFAULT_DELAY_DURATION = 700;
-const [$a093c7e1ec25a057$var$TooltipProviderContextProvider, $a093c7e1ec25a057$var$useTooltipProviderContext] = $a093c7e1ec25a057$var$createTooltipContext($a093c7e1ec25a057$var$PROVIDER_NAME);
-const $a093c7e1ec25a057$export$f78649fb9ca566b8 = (props) => {
-  const { __scopeTooltip, delayDuration = $a093c7e1ec25a057$var$DEFAULT_DELAY_DURATION, skipDelayDuration = 300, disableHoverableContent = false, children } = props;
-  const [isOpenDelayed, setIsOpenDelayed] = useState(true);
-  const isPointerInTransitRef = useRef(false);
-  const skipDelayTimerRef = useRef(0);
-  useEffect(() => {
-    const skipDelayTimer = skipDelayTimerRef.current;
-    return () => window.clearTimeout(skipDelayTimer);
-  }, []);
-  return /* @__PURE__ */ createElement($a093c7e1ec25a057$var$TooltipProviderContextProvider, {
-    scope: __scopeTooltip,
-    isOpenDelayed,
-    delayDuration,
-    onOpen: useCallback(() => {
-      window.clearTimeout(skipDelayTimerRef.current);
-      setIsOpenDelayed(false);
-    }, []),
-    onClose: useCallback(() => {
-      window.clearTimeout(skipDelayTimerRef.current);
-      skipDelayTimerRef.current = window.setTimeout(
-        () => setIsOpenDelayed(true),
-        skipDelayDuration
-      );
-    }, [
-      skipDelayDuration
-    ]),
-    isPointerInTransitRef,
-    onPointerInTransitChange: useCallback((inTransit) => {
-      isPointerInTransitRef.current = inTransit;
-    }, []),
-    disableHoverableContent
-  }, children);
-};
-const $a093c7e1ec25a057$var$TOOLTIP_NAME = "Tooltip";
-const [$a093c7e1ec25a057$var$TooltipContextProvider, $a093c7e1ec25a057$var$useTooltipContext] = $a093c7e1ec25a057$var$createTooltipContext($a093c7e1ec25a057$var$TOOLTIP_NAME);
-const $a093c7e1ec25a057$var$PORTAL_NAME = "TooltipPortal";
-const [$a093c7e1ec25a057$var$PortalProvider, $a093c7e1ec25a057$var$usePortalContext] = $a093c7e1ec25a057$var$createTooltipContext($a093c7e1ec25a057$var$PORTAL_NAME, {
-  forceMount: void 0
-});
-const [$a093c7e1ec25a057$var$VisuallyHiddenContentContextProvider, $a093c7e1ec25a057$var$useVisuallyHiddenContentContext] = $a093c7e1ec25a057$var$createTooltipContext($a093c7e1ec25a057$var$TOOLTIP_NAME, {
-  isInside: false
-});
-const $a093c7e1ec25a057$export$2881499e37b75b9a = $a093c7e1ec25a057$export$f78649fb9ca566b8;
 var FetchStatus = /* @__PURE__ */ ((FetchStatus2) => {
   FetchStatus2["Initial"] = "initial";
   FetchStatus2["Loading"] = "loading";
@@ -544,6 +218,8 @@ const getRelationDisplayValue = (relationItem) => {
     return String(relationItem);
   }
   const displayFields = [
+    "key",
+    // Highest priority - most common identifier field
     "title",
     "name",
     "label",
@@ -557,12 +233,28 @@ const getRelationDisplayValue = (relationItem) => {
   ];
   for (const field of displayFields) {
     const value = relationItem[field];
-    if (value !== null && value !== void 0 && value !== "") {
+    if (value !== null && value !== void 0 && value !== "" && typeof value !== "object" && !Array.isArray(value)) {
       return String(value);
     }
   }
+  const excludedFields = [
+    "documentId",
+    "id",
+    "createdAt",
+    "updatedAt",
+    "publishedAt",
+    "createdBy",
+    "updatedBy",
+    "locale",
+    "localizations",
+    "displayStyle",
+    // Exclude enum fields that are not good identifiers
+    "tag"
+    // Exclude enum fields
+  ];
   for (const key in relationItem) {
-    if (relationItem.hasOwnProperty(key) && typeof relationItem[key] === "string" && relationItem[key] !== "" && !["documentId", "id", "createdAt", "updatedAt", "publishedAt"].includes(key)) {
+    if (relationItem.hasOwnProperty(key) && typeof relationItem[key] === "string" && relationItem[key] !== "" && !excludedFields.includes(key) && // Exclude fields that look like IDs (long alphanumeric strings)
+    !/^[a-z0-9]{20,}$/i.test(relationItem[key])) {
       return relationItem[key];
     }
   }
@@ -857,20 +549,26 @@ const SortModal = ({ uid, mainField, contentType, mode = "global", label }) => {
             );
             const entries = targetEntries?.data?.results || targetEntries?.data || [];
             const displayableFieldNames = [];
+            const excludedTypes = ["component", "relation", "media", "json", "dynamiczone"];
             if (targetContentType?.attributes) {
               Object.keys(targetContentType.attributes).forEach((fieldName2) => {
                 const field = targetContentType.attributes[fieldName2];
-                if (["string", "text", "email", "enumeration"].includes(field.type) || fieldName2 === "name" || fieldName2 === "title" || fieldName2 === "label" || fieldName2 === "slug") {
+                if (["string", "text", "email", "enumeration"].includes(field.type) && !excludedTypes.includes(field.type)) {
                   displayableFieldNames.push(fieldName2);
+                }
+                if (["key", "name", "title", "label", "slug", "code"].includes(fieldName2) && !excludedTypes.includes(field.type)) {
+                  if (!displayableFieldNames.includes(fieldName2)) {
+                    displayableFieldNames.push(fieldName2);
+                  }
                 }
               });
             }
-            const commonDisplayFields = ["name", "title", "label", "slug", "code", "value"];
+            const commonDisplayFields = ["key", "name", "title", "label", "slug", "code", "value"];
             const options = entries.map((entry) => {
               let displayValue = null;
               for (const fieldName2 of displayableFieldNames) {
                 const value = entry[fieldName2];
-                if (value !== null && value !== void 0 && value !== "") {
+                if (value !== null && value !== void 0 && value !== "" && typeof value === "string" && !Array.isArray(value) && typeof value !== "object") {
                   displayValue = String(value);
                   break;
                 }
@@ -878,26 +576,32 @@ const SortModal = ({ uid, mainField, contentType, mode = "global", label }) => {
               if (!displayValue) {
                 for (const fieldName2 of commonDisplayFields) {
                   const value = entry[fieldName2];
-                  if (value !== null && value !== void 0 && value !== "") {
+                  if (value !== null && value !== void 0 && value !== "" && typeof value === "string" && !Array.isArray(value) && typeof value !== "object") {
                     displayValue = String(value);
                     break;
                   }
                 }
               }
               if (!displayValue) {
+                const excludedFields = [
+                  "id",
+                  "documentId",
+                  "createdAt",
+                  "updatedAt",
+                  "publishedAt",
+                  "createdBy",
+                  "updatedBy",
+                  "locale",
+                  "localizations",
+                  "displayStyle",
+                  "tag"
+                ];
                 for (const [key, value] of Object.entries(entry)) {
-                  if ([
-                    "id",
-                    "documentId",
-                    "createdAt",
-                    "updatedAt",
-                    "publishedAt",
-                    "createdBy",
-                    "updatedBy"
-                  ].includes(key)) {
+                  if (excludedFields.includes(key)) {
                     continue;
                   }
-                  if (value !== null && value !== void 0 && value !== "" && typeof value === "string") {
+                  if (value !== null && value !== void 0 && value !== "" && typeof value === "string" && !Array.isArray(value) && typeof value !== "object" && // Exclude fields that look like IDs (long alphanumeric strings)
+                  !/^[a-z0-9]{20,}$/i.test(value)) {
                     displayValue = String(value);
                     break;
                   }
@@ -1249,11 +953,11 @@ const SortModal = ({ uid, mainField, contentType, mode = "global", label }) => {
   const isSubmitButtonLoading = isSubmitting;
   return /* @__PURE__ */ jsxs(Modal.Root, { open: isOpen, onOpenChange: setIsOpen, children: [
     /* @__PURE__ */ jsx(Modal.Trigger, { children: mode === "scoped" && label ? /* @__PURE__ */ jsx(Button, { variant: "secondary", size: "S", children: label }) : /* @__PURE__ */ jsx(IconButton, { children: /* @__PURE__ */ jsx(Drag, {}) }) }),
-    /* @__PURE__ */ jsx($a093c7e1ec25a057$export$2881499e37b75b9a, { children: /* @__PURE__ */ jsxs(Modal.Content, { children: [
+    /* @__PURE__ */ jsxs(Modal.Content, { children: [
       /* @__PURE__ */ jsx(Modal.Header, { children: /* @__PURE__ */ jsx(Modal.Title, { children: /* @__PURE__ */ jsx(FormattedMessage, { id: prefixKey("title") }) }) }),
       /* @__PURE__ */ jsxs(Modal.Body, { children: [
         /* @__PURE__ */ jsxs(Box, { paddingBottom: 4, children: [
-          /* @__PURE__ */ jsx(Typography, { variant: "omega", fontWeight: "semiBold", as: "label", textColor: "neutral800", children: "Sort by field" }),
+          /* @__PURE__ */ jsx(Typography, { variant: "omega", fontWeight: "semiBold", as: "label", textColor: "neutral800", children: mode === "scoped" ? "View by" : "Sort by field" }),
           /* @__PURE__ */ jsx(Box, { paddingTop: 2, children: /* @__PURE__ */ jsxs(
             SingleSelect,
             {
@@ -1359,7 +1063,7 @@ const SortModal = ({ uid, mainField, contentType, mode = "global", label }) => {
             ] }) })
           ] })
         ] }),
-        mode === "scoped" && /* @__PURE__ */ jsxs(Fragment$1, { children: [
+        mode === "scoped" && /* @__PURE__ */ jsxs(Fragment, { children: [
           /* @__PURE__ */ jsx(Divider, {}),
           /* @__PURE__ */ jsxs(Box, { paddingTop: 4, paddingBottom: 4, children: [
             /* @__PURE__ */ jsxs(Box, { paddingBottom: 3, children: [
@@ -1476,7 +1180,7 @@ const SortModal = ({ uid, mainField, contentType, mode = "global", label }) => {
           }
         )
       ] })
-    ] }) })
+    ] })
   ] });
 };
 const SortModalContainer = () => {
@@ -1507,7 +1211,7 @@ const SortModalContainer = () => {
   }
   const { uid } = contentType;
   const { mainField } = layout.list.settings;
-  return /* @__PURE__ */ jsxs(Fragment$1, { children: [
+  return /* @__PURE__ */ jsxs(Fragment, { children: [
     /* @__PURE__ */ jsx(SortModal, { uid, mainField, contentType, mode: "global" }),
     /* @__PURE__ */ jsx(
       SortModal,
