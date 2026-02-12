@@ -1,5 +1,5 @@
 "use strict";
-const React = require("react");
+const react = require("react");
 const jsxRuntime = require("react/jsx-runtime");
 const admin = require("@strapi/strapi/admin");
 const sortable = require("@dnd-kit/sortable");
@@ -7,10 +7,28 @@ const reactIntl = require("react-intl");
 const reactRouterDom = require("react-router-dom");
 const designSystem = require("@strapi/design-system");
 const icons = require("@strapi/icons");
-require("react-dom");
+const Tooltip = require("@radix-ui/react-tooltip");
 const core = require("@dnd-kit/core");
 const styled = require("styled-components");
 const _interopDefault = (e) => e && e.__esModule ? e : { default: e };
+function _interopNamespace(e) {
+  if (e && e.__esModule) return e;
+  const n = Object.create(null, { [Symbol.toStringTag]: { value: "Module" } });
+  if (e) {
+    for (const k in e) {
+      if (k !== "default") {
+        const d = Object.getOwnPropertyDescriptor(e, k);
+        Object.defineProperty(n, k, d.get ? d : {
+          enumerable: true,
+          get: () => e[k]
+        });
+      }
+    }
+  }
+  n.default = e;
+  return Object.freeze(n);
+}
+const Tooltip__namespace = /* @__PURE__ */ _interopNamespace(Tooltip);
 const styled__default = /* @__PURE__ */ _interopDefault(styled);
 const __variableDynamicImportRuntimeHelper = (glob, path, segs) => {
   const v = glob[path];
@@ -30,8 +48,8 @@ const __variableDynamicImportRuntimeHelper = (glob, path, segs) => {
 };
 const PLUGIN_ID = "sortable-entries";
 const Initializer = ({ setPlugin }) => {
-  const ref = React.useRef(setPlugin);
-  React.useEffect(() => {
+  const ref = react.useRef(setPlugin);
+  react.useEffect(() => {
     ref.current(PLUGIN_ID);
   }, []);
   return null;
@@ -58,331 +76,6 @@ const config$1 = {
    */
   sortFieldCandidates: ["sort", "sortOrder", "order", "orderIndex"]
 };
-function _extends() {
-  return _extends = Object.assign ? Object.assign.bind() : function(n) {
-    for (var e = 1; e < arguments.length; e++) {
-      var t = arguments[e];
-      for (var r in t) ({}).hasOwnProperty.call(t, r) && (n[r] = t[r]);
-    }
-    return n;
-  }, _extends.apply(null, arguments);
-}
-function $6ed0406888f73fc4$var$setRef(ref, value) {
-  if (typeof ref === "function") ref(value);
-  else if (ref !== null && ref !== void 0) ref.current = value;
-}
-function $6ed0406888f73fc4$export$43e446d32b3d21af(...refs) {
-  return (node) => refs.forEach(
-    (ref) => $6ed0406888f73fc4$var$setRef(ref, node)
-  );
-}
-function $c512c27ab02ef895$export$50c7b4e9d9f19c1(scopeName, createContextScopeDeps = []) {
-  let defaultContexts = [];
-  function $c512c27ab02ef895$export$fd42f52fd3ae1109(rootComponentName, defaultContext) {
-    const BaseContext = /* @__PURE__ */ React.createContext(defaultContext);
-    const index2 = defaultContexts.length;
-    defaultContexts = [
-      ...defaultContexts,
-      defaultContext
-    ];
-    function Provider(props) {
-      const { scope, children, ...context } = props;
-      const Context = (scope === null || scope === void 0 ? void 0 : scope[scopeName][index2]) || BaseContext;
-      const value = React.useMemo(
-        () => context,
-        Object.values(context)
-      );
-      return /* @__PURE__ */ React.createElement(Context.Provider, {
-        value
-      }, children);
-    }
-    function useContext(consumerName, scope) {
-      const Context = (scope === null || scope === void 0 ? void 0 : scope[scopeName][index2]) || BaseContext;
-      const context = React.useContext(Context);
-      if (context) return context;
-      if (defaultContext !== void 0) return defaultContext;
-      throw new Error(`\`${consumerName}\` must be used within \`${rootComponentName}\``);
-    }
-    Provider.displayName = rootComponentName + "Provider";
-    return [
-      Provider,
-      useContext
-    ];
-  }
-  const createScope = () => {
-    const scopeContexts = defaultContexts.map((defaultContext) => {
-      return /* @__PURE__ */ React.createContext(defaultContext);
-    });
-    return function useScope(scope) {
-      const contexts = (scope === null || scope === void 0 ? void 0 : scope[scopeName]) || scopeContexts;
-      return React.useMemo(
-        () => ({
-          [`__scope${scopeName}`]: {
-            ...scope,
-            [scopeName]: contexts
-          }
-        }),
-        [
-          scope,
-          contexts
-        ]
-      );
-    };
-  };
-  createScope.scopeName = scopeName;
-  return [
-    $c512c27ab02ef895$export$fd42f52fd3ae1109,
-    $c512c27ab02ef895$var$composeContextScopes(createScope, ...createContextScopeDeps)
-  ];
-}
-function $c512c27ab02ef895$var$composeContextScopes(...scopes) {
-  const baseScope = scopes[0];
-  if (scopes.length === 1) return baseScope;
-  const createScope1 = () => {
-    const scopeHooks = scopes.map(
-      (createScope) => ({
-        useScope: createScope(),
-        scopeName: createScope.scopeName
-      })
-    );
-    return function useComposedScopes(overrideScopes) {
-      const nextScopes1 = scopeHooks.reduce((nextScopes, { useScope, scopeName }) => {
-        const scopeProps = useScope(overrideScopes);
-        const currentScope = scopeProps[`__scope${scopeName}`];
-        return {
-          ...nextScopes,
-          ...currentScope
-        };
-      }, {});
-      return React.useMemo(
-        () => ({
-          [`__scope${baseScope.scopeName}`]: nextScopes1
-        }),
-        [
-          nextScopes1
-        ]
-      );
-    };
-  };
-  createScope1.scopeName = baseScope.scopeName;
-  return createScope1;
-}
-const $5e63c961fc1ce211$export$8c6ed5c666ac1360 = /* @__PURE__ */ React.forwardRef((props, forwardedRef) => {
-  const { children, ...slotProps } = props;
-  const childrenArray = React.Children.toArray(children);
-  const slottable = childrenArray.find($5e63c961fc1ce211$var$isSlottable);
-  if (slottable) {
-    const newElement = slottable.props.children;
-    const newChildren = childrenArray.map((child) => {
-      if (child === slottable) {
-        if (React.Children.count(newElement) > 1) return React.Children.only(null);
-        return /* @__PURE__ */ React.isValidElement(newElement) ? newElement.props.children : null;
-      } else return child;
-    });
-    return /* @__PURE__ */ React.createElement($5e63c961fc1ce211$var$SlotClone, _extends({}, slotProps, {
-      ref: forwardedRef
-    }), /* @__PURE__ */ React.isValidElement(newElement) ? /* @__PURE__ */ React.cloneElement(newElement, void 0, newChildren) : null);
-  }
-  return /* @__PURE__ */ React.createElement($5e63c961fc1ce211$var$SlotClone, _extends({}, slotProps, {
-    ref: forwardedRef
-  }), children);
-});
-$5e63c961fc1ce211$export$8c6ed5c666ac1360.displayName = "Slot";
-const $5e63c961fc1ce211$var$SlotClone = /* @__PURE__ */ React.forwardRef((props, forwardedRef) => {
-  const { children, ...slotProps } = props;
-  if (/* @__PURE__ */ React.isValidElement(children)) return /* @__PURE__ */ React.cloneElement(children, {
-    ...$5e63c961fc1ce211$var$mergeProps(slotProps, children.props),
-    ref: forwardedRef ? $6ed0406888f73fc4$export$43e446d32b3d21af(forwardedRef, children.ref) : children.ref
-  });
-  return React.Children.count(children) > 1 ? React.Children.only(null) : null;
-});
-$5e63c961fc1ce211$var$SlotClone.displayName = "SlotClone";
-const $5e63c961fc1ce211$export$d9f1ccf0bdb05d45 = ({ children }) => {
-  return /* @__PURE__ */ React.createElement(React.Fragment, null, children);
-};
-function $5e63c961fc1ce211$var$isSlottable(child) {
-  return /* @__PURE__ */ React.isValidElement(child) && child.type === $5e63c961fc1ce211$export$d9f1ccf0bdb05d45;
-}
-function $5e63c961fc1ce211$var$mergeProps(slotProps, childProps) {
-  const overrideProps = {
-    ...childProps
-  };
-  for (const propName in childProps) {
-    const slotPropValue = slotProps[propName];
-    const childPropValue = childProps[propName];
-    const isHandler = /^on[A-Z]/.test(propName);
-    if (isHandler) {
-      if (slotPropValue && childPropValue) overrideProps[propName] = (...args) => {
-        childPropValue(...args);
-        slotPropValue(...args);
-      };
-      else if (slotPropValue) overrideProps[propName] = slotPropValue;
-    } else if (propName === "style") overrideProps[propName] = {
-      ...slotPropValue,
-      ...childPropValue
-    };
-    else if (propName === "className") overrideProps[propName] = [
-      slotPropValue,
-      childPropValue
-    ].filter(Boolean).join(" ");
-  }
-  return {
-    ...slotProps,
-    ...overrideProps
-  };
-}
-const $8927f6f2acc4f386$var$NODES = [
-  "a",
-  "button",
-  "div",
-  "form",
-  "h2",
-  "h3",
-  "img",
-  "input",
-  "label",
-  "li",
-  "nav",
-  "ol",
-  "p",
-  "span",
-  "svg",
-  "ul"
-];
-const $8927f6f2acc4f386$export$250ffa63cdc0d034 = $8927f6f2acc4f386$var$NODES.reduce((primitive, node) => {
-  const Node = /* @__PURE__ */ React.forwardRef((props, forwardedRef) => {
-    const { asChild, ...primitiveProps } = props;
-    const Comp = asChild ? $5e63c961fc1ce211$export$8c6ed5c666ac1360 : node;
-    React.useEffect(() => {
-      window[Symbol.for("radix-ui")] = true;
-    }, []);
-    return /* @__PURE__ */ React.createElement(Comp, _extends({}, primitiveProps, {
-      ref: forwardedRef
-    }));
-  });
-  Node.displayName = `Primitive.${node}`;
-  return {
-    ...primitive,
-    [node]: Node
-  };
-}, {});
-const $7e8f5cd07187803e$export$21b07c8f274aebd5 = /* @__PURE__ */ React.forwardRef((props, forwardedRef) => {
-  const { children, width = 10, height = 5, ...arrowProps } = props;
-  return /* @__PURE__ */ React.createElement($8927f6f2acc4f386$export$250ffa63cdc0d034.svg, _extends({}, arrowProps, {
-    ref: forwardedRef,
-    width,
-    height,
-    viewBox: "0 0 30 10",
-    preserveAspectRatio: "none"
-  }), props.asChild ? children : /* @__PURE__ */ React.createElement("polygon", {
-    points: "0,0 30,0 15,10"
-  }));
-});
-const $7e8f5cd07187803e$export$be92b6f5f03c0fe9 = $7e8f5cd07187803e$export$21b07c8f274aebd5;
-const $cf1ac5d9fe0e8206$var$POPPER_NAME = "Popper";
-const [$cf1ac5d9fe0e8206$var$createPopperContext, $cf1ac5d9fe0e8206$export$722aac194ae923] = $c512c27ab02ef895$export$50c7b4e9d9f19c1($cf1ac5d9fe0e8206$var$POPPER_NAME);
-const [$cf1ac5d9fe0e8206$var$PopperProvider, $cf1ac5d9fe0e8206$var$usePopperContext] = $cf1ac5d9fe0e8206$var$createPopperContext($cf1ac5d9fe0e8206$var$POPPER_NAME);
-const $cf1ac5d9fe0e8206$var$CONTENT_NAME = "PopperContent";
-const [$cf1ac5d9fe0e8206$var$PopperContentProvider, $cf1ac5d9fe0e8206$var$useContentContext] = $cf1ac5d9fe0e8206$var$createPopperContext($cf1ac5d9fe0e8206$var$CONTENT_NAME);
-const $cf1ac5d9fe0e8206$var$ARROW_NAME = "PopperArrow";
-const $cf1ac5d9fe0e8206$var$OPPOSITE_SIDE = {
-  top: "bottom",
-  right: "left",
-  bottom: "top",
-  left: "right"
-};
-const $cf1ac5d9fe0e8206$export$79d62cd4e10a3fd0 = /* @__PURE__ */ React.forwardRef(function $cf1ac5d9fe0e8206$export$79d62cd4e10a3fd02(props, forwardedRef) {
-  const { __scopePopper, ...arrowProps } = props;
-  const contentContext = $cf1ac5d9fe0e8206$var$useContentContext($cf1ac5d9fe0e8206$var$ARROW_NAME, __scopePopper);
-  const baseSide = $cf1ac5d9fe0e8206$var$OPPOSITE_SIDE[contentContext.placedSide];
-  return (
-    // we have to use an extra wrapper because `ResizeObserver` (used by `useSize`)
-    // doesn't report size as we'd expect on SVG elements.
-    // it reports their bounding box which is effectively the largest path inside the SVG.
-    /* @__PURE__ */ React.createElement("span", {
-      ref: contentContext.onArrowChange,
-      style: {
-        position: "absolute",
-        left: contentContext.arrowX,
-        top: contentContext.arrowY,
-        [baseSide]: 0,
-        transformOrigin: {
-          top: "",
-          right: "0 0",
-          bottom: "center 0",
-          left: "100% 0"
-        }[contentContext.placedSide],
-        transform: {
-          top: "translateY(100%)",
-          right: "translateY(50%) rotate(90deg) translateX(-50%)",
-          bottom: `rotate(180deg)`,
-          left: "translateY(50%) rotate(-90deg) translateX(50%)"
-        }[contentContext.placedSide],
-        visibility: contentContext.shouldHideArrow ? "hidden" : void 0
-      }
-    }, /* @__PURE__ */ React.createElement($7e8f5cd07187803e$export$be92b6f5f03c0fe9, _extends({}, arrowProps, {
-      ref: forwardedRef,
-      style: {
-        ...arrowProps.style,
-        // ensures the element can be measured correctly (mostly for if SVG)
-        display: "block"
-      }
-    })))
-  );
-});
-/* @__PURE__ */ Object.assign($cf1ac5d9fe0e8206$export$79d62cd4e10a3fd0, {
-  displayName: $cf1ac5d9fe0e8206$var$ARROW_NAME
-});
-const [$a093c7e1ec25a057$var$createTooltipContext] = $c512c27ab02ef895$export$50c7b4e9d9f19c1("Tooltip", [
-  $cf1ac5d9fe0e8206$export$722aac194ae923
-]);
-$cf1ac5d9fe0e8206$export$722aac194ae923();
-const $a093c7e1ec25a057$var$PROVIDER_NAME = "TooltipProvider";
-const $a093c7e1ec25a057$var$DEFAULT_DELAY_DURATION = 700;
-const [$a093c7e1ec25a057$var$TooltipProviderContextProvider, $a093c7e1ec25a057$var$useTooltipProviderContext] = $a093c7e1ec25a057$var$createTooltipContext($a093c7e1ec25a057$var$PROVIDER_NAME);
-const $a093c7e1ec25a057$export$f78649fb9ca566b8 = (props) => {
-  const { __scopeTooltip, delayDuration = $a093c7e1ec25a057$var$DEFAULT_DELAY_DURATION, skipDelayDuration = 300, disableHoverableContent = false, children } = props;
-  const [isOpenDelayed, setIsOpenDelayed] = React.useState(true);
-  const isPointerInTransitRef = React.useRef(false);
-  const skipDelayTimerRef = React.useRef(0);
-  React.useEffect(() => {
-    const skipDelayTimer = skipDelayTimerRef.current;
-    return () => window.clearTimeout(skipDelayTimer);
-  }, []);
-  return /* @__PURE__ */ React.createElement($a093c7e1ec25a057$var$TooltipProviderContextProvider, {
-    scope: __scopeTooltip,
-    isOpenDelayed,
-    delayDuration,
-    onOpen: React.useCallback(() => {
-      window.clearTimeout(skipDelayTimerRef.current);
-      setIsOpenDelayed(false);
-    }, []),
-    onClose: React.useCallback(() => {
-      window.clearTimeout(skipDelayTimerRef.current);
-      skipDelayTimerRef.current = window.setTimeout(
-        () => setIsOpenDelayed(true),
-        skipDelayDuration
-      );
-    }, [
-      skipDelayDuration
-    ]),
-    isPointerInTransitRef,
-    onPointerInTransitChange: React.useCallback((inTransit) => {
-      isPointerInTransitRef.current = inTransit;
-    }, []),
-    disableHoverableContent
-  }, children);
-};
-const $a093c7e1ec25a057$var$TOOLTIP_NAME = "Tooltip";
-const [$a093c7e1ec25a057$var$TooltipContextProvider, $a093c7e1ec25a057$var$useTooltipContext] = $a093c7e1ec25a057$var$createTooltipContext($a093c7e1ec25a057$var$TOOLTIP_NAME);
-const $a093c7e1ec25a057$var$PORTAL_NAME = "TooltipPortal";
-const [$a093c7e1ec25a057$var$PortalProvider, $a093c7e1ec25a057$var$usePortalContext] = $a093c7e1ec25a057$var$createTooltipContext($a093c7e1ec25a057$var$PORTAL_NAME, {
-  forceMount: void 0
-});
-const [$a093c7e1ec25a057$var$VisuallyHiddenContentContextProvider, $a093c7e1ec25a057$var$useVisuallyHiddenContentContext] = $a093c7e1ec25a057$var$createTooltipContext($a093c7e1ec25a057$var$TOOLTIP_NAME, {
-  isInside: false
-});
-const $a093c7e1ec25a057$export$2881499e37b75b9a = $a093c7e1ec25a057$export$f78649fb9ca566b8;
 var FetchStatus = /* @__PURE__ */ ((FetchStatus2) => {
   FetchStatus2["Initial"] = "initial";
   FetchStatus2["Loading"] = "loading";
@@ -735,25 +428,25 @@ const config = {
   }
 };
 const SortModal = ({ uid, mainField, contentType, mode = "global", label }) => {
-  const [isOpen, setIsOpen] = React.useState(false);
-  const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const [isOpen, setIsOpen] = react.useState(false);
+  const [isSubmitting, setIsSubmitting] = react.useState(false);
   const [searchParams, setSearchParams] = reactRouterDom.useSearchParams();
   const { toggleNotification } = admin.useNotification();
   const { formatMessage } = reactIntl.useIntl();
   const translate = (key) => formatMessage({ id: prefixKey(key) });
   const fetchClient = admin.useFetchClient();
-  const [entriesFetchState, setEntriesFetchState] = React.useState({
+  const [entriesFetchState, setEntriesFetchState] = react.useState({
     status: FetchStatus.Initial
   });
-  const [selectedDisplayField, setSelectedDisplayField] = React.useState(mainField);
-  const [additionalDisplayField1, setAdditionalDisplayField1] = React.useState("");
-  const [additionalDisplayField2, setAdditionalDisplayField2] = React.useState("");
-  const [selectedFilterField, setSelectedFilterField] = React.useState("");
-  const [selectedFilterValue, setSelectedFilterValue] = React.useState("");
-  const [filterSearchTerm, setFilterSearchTerm] = React.useState("");
-  const [filterOptions, setFilterOptions] = React.useState([]);
-  const [isLoadingOptions, setIsLoadingOptions] = React.useState(false);
-  const resolvedSortField = React.useMemo(() => {
+  const [selectedDisplayField, setSelectedDisplayField] = react.useState(mainField);
+  const [additionalDisplayField1, setAdditionalDisplayField1] = react.useState("");
+  const [additionalDisplayField2, setAdditionalDisplayField2] = react.useState("");
+  const [selectedFilterField, setSelectedFilterField] = react.useState("");
+  const [selectedFilterValue, setSelectedFilterValue] = react.useState("");
+  const [filterSearchTerm, setFilterSearchTerm] = react.useState("");
+  const [filterOptions, setFilterOptions] = react.useState([]);
+  const [isLoadingOptions, setIsLoadingOptions] = react.useState(false);
+  const resolvedSortField = react.useMemo(() => {
     if (!contentType?.attributes) {
       return config$1.sortOrderField;
     }
@@ -831,14 +524,14 @@ const SortModal = ({ uid, mainField, contentType, mode = "global", label }) => {
       }
     };
   };
-  const filters = React.useMemo(() => {
+  const filters = react.useMemo(() => {
     if (mode === "scoped" && selectedFilterField && selectedFilterValue) {
       return buildFilterFromSelection(selectedFilterField, selectedFilterValue);
     }
     return listViewFilters;
   }, [mode, selectedFilterField, selectedFilterValue, listViewFilters]);
-  const filtersString = React.useMemo(() => JSON.stringify(filters), [filters]);
-  const fetchFilterOptions = React.useCallback(
+  const filtersString = react.useMemo(() => JSON.stringify(filters), [filters]);
+  const fetchFilterOptions = react.useCallback(
     async (fieldName, searchTerm = "") => {
       if (!fieldName || !contentType?.attributes?.[fieldName]) {
         setFilterOptions([]);
@@ -981,7 +674,7 @@ const SortModal = ({ uid, mainField, contentType, mode = "global", label }) => {
     ];
     return systemFields.includes(fieldName);
   };
-  const getFilterableFieldsMemo = React.useMemo(() => {
+  const getFilterableFieldsMemo = react.useMemo(() => {
     if (!contentType || !contentType.attributes) {
       return [];
     }
@@ -1032,7 +725,7 @@ const SortModal = ({ uid, mainField, contentType, mode = "global", label }) => {
     });
     return filterableFields;
   }, [contentType]);
-  const getDisplayableFieldsMemo = React.useMemo(() => {
+  const getDisplayableFieldsMemo = react.useMemo(() => {
     if (!contentType || !contentType.attributes) {
       return [];
     }
@@ -1086,9 +779,9 @@ const SortModal = ({ uid, mainField, contentType, mode = "global", label }) => {
     });
     return displayableFields;
   }, [contentType, resolvedSortField]);
-  const isFetchingRef = React.useRef(false);
-  const abortControllerRef = React.useRef(null);
-  const fetchEntries = React.useCallback(async () => {
+  const isFetchingRef = react.useRef(false);
+  const abortControllerRef = react.useRef(null);
+  const fetchEntries = react.useCallback(async () => {
     if (isFetchingRef.current) {
       return;
     }
@@ -1167,7 +860,7 @@ const SortModal = ({ uid, mainField, contentType, mode = "global", label }) => {
     contentType,
     fetchClient
   ]);
-  React.useEffect(() => {
+  react.useEffect(() => {
     if (isOpen && mode === "scoped" && selectedFilterField) {
       const timeoutId = setTimeout(() => {
         fetchFilterOptions(selectedFilterField, filterSearchTerm);
@@ -1177,7 +870,7 @@ const SortModal = ({ uid, mainField, contentType, mode = "global", label }) => {
       setFilterOptions([]);
     }
   }, [selectedFilterField, filterSearchTerm, isOpen, mode, fetchFilterOptions]);
-  React.useEffect(() => {
+  react.useEffect(() => {
     if (!isOpen) {
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
@@ -1194,7 +887,7 @@ const SortModal = ({ uid, mainField, contentType, mode = "global", label }) => {
       prevFetchParamsRef.current = "";
     }
   }, [isOpen, mainField]);
-  React.useEffect(() => {
+  react.useEffect(() => {
     return () => {
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
@@ -1202,8 +895,8 @@ const SortModal = ({ uid, mainField, contentType, mode = "global", label }) => {
       }
     };
   }, []);
-  const prevFetchParamsRef = React.useRef("");
-  React.useEffect(() => {
+  const prevFetchParamsRef = react.useRef("");
+  react.useEffect(() => {
     if (!isOpen) {
       return;
     }
@@ -1289,7 +982,7 @@ const SortModal = ({ uid, mainField, contentType, mode = "global", label }) => {
   };
   const isSubmitButtonDisabled = isSubmitting || entriesFetchState.status !== FetchStatus.Resolved;
   const isSubmitButtonLoading = isSubmitting;
-  return /* @__PURE__ */ jsxRuntime.jsx($a093c7e1ec25a057$export$2881499e37b75b9a, { delayDuration: 300, skipDelayDuration: 0, children: /* @__PURE__ */ jsxRuntime.jsxs(designSystem.Modal.Root, { open: isOpen, onOpenChange: setIsOpen, children: [
+  return /* @__PURE__ */ jsxRuntime.jsx(Tooltip__namespace.Provider, { delayDuration: 300, skipDelayDuration: 0, children: /* @__PURE__ */ jsxRuntime.jsxs(designSystem.Modal.Root, { open: isOpen, onOpenChange: setIsOpen, children: [
     /* @__PURE__ */ jsxRuntime.jsx(designSystem.Modal.Trigger, { children: mode === "scoped" && label ? /* @__PURE__ */ jsxRuntime.jsx(designSystem.Button, { variant: "secondary", size: "S", children: label }) : /* @__PURE__ */ jsxRuntime.jsx(designSystem.IconButton, { children: /* @__PURE__ */ jsxRuntime.jsx(icons.Drag, {}) }) }),
     /* @__PURE__ */ jsxRuntime.jsxs(designSystem.Modal.Content, { children: [
       /* @__PURE__ */ jsxRuntime.jsx(designSystem.Modal.Header, { children: /* @__PURE__ */ jsxRuntime.jsx(designSystem.Modal.Title, { children: /* @__PURE__ */ jsxRuntime.jsx(reactIntl.FormattedMessage, { id: prefixKey("title") }) }) }),
@@ -1609,4 +1302,3 @@ const index = {
   }
 };
 module.exports = index;
-//# sourceMappingURL=index.js.map
