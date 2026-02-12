@@ -96,7 +96,8 @@ const SortModal = ({ uid, mainField, contentType, mode = 'global', label }: Sort
   // Scoped filter selection state
   const [selectedFilterField, setSelectedFilterField] = useState<string>('');
   const [selectedFilterValue, setSelectedFilterValue] = useState<string>('');
-  const [filterSearchTerm, setFilterSearchTerm] = useState<string>('');
+  const [filterSearchInputValue, setFilterSearchInputValue] = useState<string>('');
+  const [appliedFilterSearchTerm, setAppliedFilterSearchTerm] = useState<string>('');
   const [filterOptions, setFilterOptions] = useState<Array<{ id: string; label: string }>>([]);
   const [isLoadingOptions, setIsLoadingOptions] = useState(false);
 
@@ -722,19 +723,14 @@ const SortModal = ({ uid, mainField, contentType, mode = 'global', label }: Sort
     fetchClient,
   ]);
 
-  // Fetch filter options when field selection or search term changes (with debounce)
+  // Fetch filter options when field selection or applied search term changes
   useEffect(() => {
     if (isOpen && mode === 'scoped' && selectedFilterField) {
-      // Debounce search to avoid too many API calls
-      const timeoutId = setTimeout(() => {
-        fetchFilterOptions(selectedFilterField, filterSearchTerm);
-      }, 300);
-
-      return () => clearTimeout(timeoutId);
+      fetchFilterOptions(selectedFilterField, appliedFilterSearchTerm);
     } else {
       setFilterOptions([]);
     }
-  }, [selectedFilterField, filterSearchTerm, isOpen, mode, fetchFilterOptions]);
+  }, [selectedFilterField, appliedFilterSearchTerm, isOpen, mode, fetchFilterOptions]);
 
   // Reset selections when modal closes
   useEffect(() => {
@@ -749,7 +745,8 @@ const SortModal = ({ uid, mainField, contentType, mode = 'global', label }: Sort
       setAdditionalDisplayField2('');
       setSelectedFilterField('');
       setSelectedFilterValue('');
-      setFilterSearchTerm('');
+      setFilterSearchInputValue('');
+      setAppliedFilterSearchTerm('');
       setFilterOptions([]);
       // Reset refs to prevent stale state
       isFetchingRef.current = false;
@@ -1085,7 +1082,8 @@ const SortModal = ({ uid, mainField, contentType, mode = 'global', label }: Sort
                         onChange={(value: string) => {
                           setSelectedFilterField(value || '');
                           setSelectedFilterValue(''); // Reset value when field changes
-                          setFilterSearchTerm(''); // Reset search term when field changes
+                          setFilterSearchInputValue(''); // Reset search input when field changes
+                          setAppliedFilterSearchTerm(''); // Reset applied search when field changes
                         }}
                         disabled={isSubmitting}
                         placeholder="Select a field to filter by"
@@ -1093,7 +1091,8 @@ const SortModal = ({ uid, mainField, contentType, mode = 'global', label }: Sort
                         onClear={() => {
                           setSelectedFilterField('');
                           setSelectedFilterValue('');
-                          setFilterSearchTerm('');
+                          setFilterSearchInputValue('');
+                          setAppliedFilterSearchTerm('');
                         }}
                         error={undefined}
                       >
@@ -1168,17 +1167,40 @@ const SortModal = ({ uid, mainField, contentType, mode = 'global', label }: Sort
                               <>
                                 {selectedAttr?.type === 'relation' && (
                                   <Box paddingBottom={2}>
-                                    <TextInput
-                                      type="text"
-                                      value={filterSearchTerm}
-                                      onChange={(e: { target: { value: string } }) =>
-                                        setFilterSearchTerm(e.target.value)
-                                      }
-                                      disabled={isSubmitting || isLoadingOptions}
-                                      placeholder="Type to search..."
-                                      clearLabel="Clear search"
-                                      onClear={() => setFilterSearchTerm('')}
-                                    />
+                                    <Flex gap={2} alignItems="flex-end">
+                                      <Box grow={1}>
+                                        <TextInput
+                                          type="text"
+                                          value={filterSearchInputValue}
+                                          onChange={(e: { target: { value: string } }) =>
+                                            setFilterSearchInputValue(e.target.value)
+                                          }
+                                          onKeyDown={(e: { key: string }) => {
+                                            if (e.key === 'Enter') {
+                                              setAppliedFilterSearchTerm(
+                                                filterSearchInputValue.trim()
+                                              );
+                                            }
+                                          }}
+                                          disabled={isSubmitting || isLoadingOptions}
+                                          placeholder="Type then press Enter or click Search..."
+                                          clearLabel="Clear search"
+                                          onClear={() => {
+                                            setFilterSearchInputValue('');
+                                            setAppliedFilterSearchTerm('');
+                                          }}
+                                        />
+                                      </Box>
+                                      <Button
+                                        variant="secondary"
+                                        disabled={isSubmitting || isLoadingOptions}
+                                        onClick={() =>
+                                          setAppliedFilterSearchTerm(filterSearchInputValue.trim())
+                                        }
+                                      >
+                                        Search
+                                      </Button>
+                                    </Flex>
                                   </Box>
                                 )}
                                 <SingleSelect
@@ -1189,7 +1211,7 @@ const SortModal = ({ uid, mainField, contentType, mode = 'global', label }: Sort
                                     isLoadingOptions
                                       ? 'Loading options...'
                                       : selectedAttr?.type === 'relation'
-                                        ? filterSearchTerm
+                                        ? appliedFilterSearchTerm
                                           ? filterOptions.length === 0
                                             ? 'No results found, try different search'
                                             : 'Select from search results'
