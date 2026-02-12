@@ -30,7 +30,7 @@ const config$1 = {
    * We explicitly set a higher page size so collections with >100 records can
    * still be fully sorted in the UI.
    */
-  entriesPageSize: 1e3
+  entriesPageSize: 500
 };
 var DocumentAction = /* @__PURE__ */ ((DocumentAction2) => {
   DocumentAction2["Create"] = "create";
@@ -548,3 +548,4 @@ const index = {
 export {
   index as default
 };
+//# sourceMappingURL=index.mjs.map

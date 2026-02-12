@@ -18,6 +18,7 @@ import {
   Grid,
 } from '@strapi/design-system';
 import { Drag } from '@strapi/icons';
+import * as Tooltip from '@radix-ui/react-tooltip';
 
 import { FetchStatus } from '../../constants';
 import { prefixKey } from '../../utils/prefixKey';
@@ -95,6 +96,7 @@ const SortModal = ({ uid, mainField, contentType, mode = 'global', label }: Sort
   // Scoped filter selection state
   const [selectedFilterField, setSelectedFilterField] = useState<string>('');
   const [selectedFilterValue, setSelectedFilterValue] = useState<string>('');
+  const [filterSearchTerm, setFilterSearchTerm] = useState<string>('');
   const [filterOptions, setFilterOptions] = useState<Array<{ id: string; label: string }>>([]);
   const [isLoadingOptions, setIsLoadingOptions] = useState(false);
 
@@ -225,9 +227,10 @@ const SortModal = ({ uid, mainField, contentType, mode = 'global', label }: Sort
 
   /**
    * Fetches available options for a filterable field (relation or enumeration).
+   * Supports remote search for relation fields to handle large datasets (>100 records).
    */
   const fetchFilterOptions = useCallback(
-    async (fieldName: string) => {
+    async (fieldName: string, searchTerm: string = '') => {
       if (!fieldName || !contentType?.attributes?.[fieldName]) {
         setFilterOptions([]);
         return;
@@ -253,14 +256,33 @@ const SortModal = ({ uid, mainField, contentType, mode = 'global', label }: Sort
           // Extract target UID from attribute (e.g., "api::test-category.test-category")
           const targetUid = attribute.target;
 
-          // Fetch entries from the target collection using Strapi's document API
-          // Limit to 100 entries to avoid performance issues
-          // IMPORTANT: Do NOT specify sort parameter to avoid "Invalid key name" errors
-          // Strapi will use default sorting (usually by id or documentId)
-          const params = {
-            pageSize: 100, // Limit to 100 options to avoid lag
-            // Explicitly do NOT include sort parameter
+          // Use remote search strategy: small pageSize + filter by searchTerm
+          // This allows finding records beyond the first 100 without loading everything
+          const pageSize = 50;
+          const params: Record<string, unknown> = {
+            page: 1,
+            pageSize,
+            // Explicitly do NOT include sort parameter to avoid "Invalid key name" errors
           };
+
+          // Add search filter if searchTerm is provided
+          // Search across common identifier fields: key, name, title, label, slug, code
+          if (searchTerm && searchTerm.trim() !== '') {
+            const searchFilters: any[] = [];
+            const searchFields = ['key', 'name', 'title', 'label', 'slug', 'code'];
+            searchFields.forEach((field) => {
+              searchFilters.push({
+                [field]: {
+                  $containsi: searchTerm.trim(),
+                },
+              });
+            });
+            if (searchFilters.length > 0) {
+              params.filters = {
+                $or: searchFilters,
+              };
+            }
+          }
 
           try {
             // First, try to get the target contentType schema to find displayable fields
@@ -708,14 +730,19 @@ const SortModal = ({ uid, mainField, contentType, mode = 'global', label }: Sort
     fetchClient,
   ]);
 
-  // Fetch filter options when field selection changes
+  // Fetch filter options when field selection or search term changes (with debounce)
   useEffect(() => {
     if (isOpen && mode === 'scoped' && selectedFilterField) {
-      fetchFilterOptions(selectedFilterField);
+      // Debounce search to avoid too many API calls
+      const timeoutId = setTimeout(() => {
+        fetchFilterOptions(selectedFilterField, filterSearchTerm);
+      }, 300);
+
+      return () => clearTimeout(timeoutId);
     } else {
       setFilterOptions([]);
     }
-  }, [selectedFilterField, isOpen, mode, fetchFilterOptions]);
+  }, [selectedFilterField, filterSearchTerm, isOpen, mode, fetchFilterOptions]);
 
   // Reset selections when modal closes
   useEffect(() => {
@@ -730,6 +757,7 @@ const SortModal = ({ uid, mainField, contentType, mode = 'global', label }: Sort
       setAdditionalDisplayField2('');
       setSelectedFilterField('');
       setSelectedFilterValue('');
+      setFilterSearchTerm('');
       setFilterOptions([]);
       // Reset refs to prevent stale state
       isFetchingRef.current = false;
@@ -878,332 +906,360 @@ const SortModal = ({ uid, mainField, contentType, mode = 'global', label }: Sort
   const isSubmitButtonLoading = isSubmitting;
 
   return (
-    <Modal.Root open={isOpen} onOpenChange={setIsOpen}>
-      <Modal.Trigger>
-        {mode === 'scoped' && label ? (
-          <Button variant="secondary" size="S">
-            {label}
-          </Button>
-        ) : (
-          <IconButton>
-            <Drag />
-          </IconButton>
-        )}
-      </Modal.Trigger>
-      <Modal.Content>
-        <Modal.Header>
-          <Modal.Title>
-            <FormattedMessage id={prefixKey('title')} />
-          </Modal.Title>
-        </Modal.Header>
-        <Modal.Body>
-          {/* Main Display Field Section */}
-          <Box paddingBottom={4}>
-            <Typography variant="omega" fontWeight="semiBold" as="label" textColor="neutral800">
-              {mode === 'scoped' ? 'View by' : 'Sort by field'}
-            </Typography>
-            <Box paddingTop={2}>
-              <SingleSelect
-                value={selectedDisplayField || mainField}
-                onChange={(value: string) => {
-                  if (value) {
-                    setSelectedDisplayField(value);
-                  }
-                }}
-                disabled={isSubmitting}
-                placeholder="Select a field"
-                error={undefined}
-              >
-                <SingleSelectOption value={mainField}>{mainField} (default)</SingleSelectOption>
-                {getDisplayableFieldsMemo
-                  .filter((fieldName) => fieldName !== mainField)
-                  .map((fieldName) => {
-                    const attr = contentType?.attributes?.[fieldName];
-                    const fieldType =
-                      attr?.type === 'enumeration'
-                        ? ' (enum)'
-                        : attr?.type === 'relation'
-                          ? ' (relation)'
-                          : attr?.type === 'media'
-                            ? ' (media)'
-                            : '';
-                    return (
-                      <SingleSelectOption key={fieldName} value={fieldName}>
-                        {fieldName}
-                        {fieldType}
-                      </SingleSelectOption>
-                    );
-                  })}
-              </SingleSelect>
-            </Box>
-          </Box>
-
-          {/* Divider */}
-          <Divider />
-
-          {/* Additional Fields Section */}
-          <Box paddingTop={4} paddingBottom={4}>
-            <Typography
-              variant="omega"
-              fontWeight="semiBold"
-              as="label"
-              textColor="neutral600"
-              paddingBottom={3}
-            >
-              Additional display fields (optional)
-            </Typography>
-            <Grid.Root gap={3} columns={2}>
-              <Grid.Item col={1}>
-                <Box>
-                  <Typography variant="pi" fontWeight="medium" as="label" textColor="neutral700">
-                    Field 1
-                  </Typography>
-                  <Box paddingTop={2}>
-                    <SingleSelect
-                      value={additionalDisplayField1 || undefined}
-                      onChange={(value: string) => {
-                        setAdditionalDisplayField1(value || '');
-                      }}
-                      disabled={isSubmitting}
-                      placeholder="None"
-                      clearLabel="Clear selection"
-                      onClear={() => setAdditionalDisplayField1('')}
-                      error={undefined}
-                    >
-                      <SingleSelectOption value="">None</SingleSelectOption>
-                      {getDisplayableFieldsMemo
-                        .filter(
-                          (fieldName) =>
-                            fieldName !== selectedDisplayField &&
-                            fieldName !== additionalDisplayField2
-                        )
-                        .map((fieldName) => {
-                          const attr = contentType?.attributes?.[fieldName];
-                          const fieldType =
-                            attr?.type === 'enumeration'
-                              ? ' (enum)'
-                              : attr?.type === 'relation'
-                                ? ' (relation)'
-                                : attr?.type === 'media'
-                                  ? ' (media)'
-                                  : '';
-                          return (
-                            <SingleSelectOption key={fieldName} value={fieldName}>
-                              {fieldName}
-                              {fieldType}
-                            </SingleSelectOption>
-                          );
-                        })}
-                    </SingleSelect>
-                  </Box>
-                </Box>
-              </Grid.Item>
-              <Grid.Item col={1}>
-                <Box>
-                  <Typography variant="pi" fontWeight="medium" as="label" textColor="neutral700">
-                    Field 2
-                  </Typography>
-                  <Box paddingTop={2}>
-                    <SingleSelect
-                      value={additionalDisplayField2 || undefined}
-                      onChange={(value: string) => {
-                        setAdditionalDisplayField2(value || '');
-                      }}
-                      disabled={isSubmitting}
-                      placeholder="None"
-                      clearLabel="Clear selection"
-                      onClear={() => setAdditionalDisplayField2('')}
-                      error={undefined}
-                    >
-                      <SingleSelectOption value="">None</SingleSelectOption>
-                      {getDisplayableFieldsMemo
-                        .filter(
-                          (fieldName) =>
-                            fieldName !== selectedDisplayField &&
-                            fieldName !== additionalDisplayField1
-                        )
-                        .map((fieldName) => {
-                          const attr = contentType?.attributes?.[fieldName];
-                          const fieldType =
-                            attr?.type === 'enumeration'
-                              ? ' (enum)'
-                              : attr?.type === 'relation'
-                                ? ' (relation)'
-                                : attr?.type === 'media'
-                                  ? ' (media)'
-                                  : '';
-                          return (
-                            <SingleSelectOption key={fieldName} value={fieldName}>
-                              {fieldName}
-                              {fieldType}
-                            </SingleSelectOption>
-                          );
-                        })}
-                    </SingleSelect>
-                  </Box>
-                </Box>
-              </Grid.Item>
-            </Grid.Root>
-          </Box>
-          {mode === 'scoped' && (
-            <>
-              <Divider />
-              <Box paddingTop={4} paddingBottom={4}>
-                <Box paddingBottom={3}>
-                  <Typography
-                    variant="omega"
-                    fontWeight="semiBold"
-                    as="label"
-                    textColor="neutral800"
-                  >
-                    Filter by field
-                  </Typography>
-                  <Box paddingTop={2}>
-                    <SingleSelect
-                      value={selectedFilterField || undefined}
-                      onChange={(value: string) => {
-                        setSelectedFilterField(value || '');
-                        setSelectedFilterValue(''); // Reset value when field changes
-                      }}
-                      disabled={isSubmitting}
-                      placeholder="Select a field to filter by"
-                      clearLabel="Clear selection"
-                      onClear={() => {
-                        setSelectedFilterField('');
-                        setSelectedFilterValue('');
-                      }}
-                      error={undefined}
-                    >
-                      {getFilterableFieldsMemo.map((fieldName) => {
-                        const attr = contentType?.attributes?.[fieldName];
-                        const fieldType =
-                          attr?.type === 'enumeration'
-                            ? ' (enum)'
-                            : attr?.type === 'relation'
-                              ? ' (relation)'
-                              : '';
-                        return (
-                          <SingleSelectOption key={fieldName} value={fieldName}>
-                            {fieldName}
-                            {fieldType}
-                          </SingleSelectOption>
-                        );
-                      })}
-                    </SingleSelect>
-                  </Box>
-                </Box>
-                {selectedFilterField &&
-                  (() => {
-                    const selectedAttr = contentType?.attributes?.[selectedFilterField];
-                    const isRelationOrEnum =
-                      selectedAttr?.type === 'relation' || selectedAttr?.type === 'enumeration';
-                    const needsTextInput = !isRelationOrEnum && filterOptions.length === 0;
-
-                    return (
-                      <Box>
-                        <Typography
-                          variant="omega"
-                          fontWeight="semiBold"
-                          as="label"
-                          textColor="neutral800"
-                        >
-                          Filter value
-                        </Typography>
-                        <Box paddingTop={2}>
-                          {needsTextInput ? (
-                            // Text input for string, number, boolean, date, etc.
-                            <TextInput
-                              type={
-                                selectedAttr?.type === 'boolean'
-                                  ? 'text'
-                                  : selectedAttr?.type === 'date' ||
-                                      selectedAttr?.type === 'datetime'
-                                    ? 'date'
-                                    : ['integer', 'biginteger', 'float', 'decimal'].includes(
-                                          selectedAttr?.type || ''
-                                        )
-                                      ? 'number'
-                                      : 'text'
-                              }
-                              value={selectedFilterValue}
-                              onChange={(e: { target: { value: string } }) =>
-                                setSelectedFilterValue(e.target.value)
-                              }
-                              disabled={isSubmitting}
-                              placeholder={
-                                selectedAttr?.type === 'boolean'
-                                  ? 'Enter true/false'
-                                  : selectedAttr?.type === 'date' ||
-                                      selectedAttr?.type === 'datetime'
-                                    ? 'Select date'
-                                    : `Enter ${selectedAttr?.type || 'value'}`
-                              }
-                            />
-                          ) : (
-                            // Select dropdown for relation and enumeration
-                            <SingleSelect
-                              value={selectedFilterValue || undefined}
-                              onChange={(value: string) => setSelectedFilterValue(value || '')}
-                              disabled={
-                                isSubmitting || isLoadingOptions || filterOptions.length === 0
-                              }
-                              placeholder={
-                                isLoadingOptions ? 'Loading options...' : 'Select a value'
-                              }
-                              clearLabel="Clear selection"
-                              onClear={() => setSelectedFilterValue('')}
-                              error={undefined}
-                            >
-                              {filterOptions.map((option) => (
-                                <SingleSelectOption key={option.id} value={option.id}>
-                                  {option.label}
-                                </SingleSelectOption>
-                              ))}
-                            </SingleSelect>
-                          )}
-                        </Box>
-                      </Box>
-                    );
-                  })()}
-              </Box>
-            </>
-          )}
-          {mode === 'scoped' && (!selectedFilterField || !selectedFilterValue) ? (
-            <Box padding={4}>
-              <Typography variant="omega" textColor="neutral600">
-                Please select a field and value to filter entries.
-              </Typography>
-            </Box>
-          ) : (
-            <SortModalBody
-              entriesFetchState={entriesFetchState}
-              mainField={selectedDisplayField}
-              additionalFields={[additionalDisplayField1, additionalDisplayField2].filter(
-                (f) => f && f !== ''
-              )}
-              contentType={contentType}
-              handleDragEnd={handleDragEnd}
-              disabled={isSubmitting}
-            />
-          )}
-        </Modal.Body>
-        <Modal.Footer>
-          <Modal.Close>
-            <Button variant="tertiary">
-              <FormattedMessage id={prefixKey('cancel-button.title')} />
+    <Tooltip.Provider delayDuration={300} skipDelayDuration={0}>
+      <Modal.Root open={isOpen} onOpenChange={setIsOpen}>
+        <Modal.Trigger>
+          {mode === 'scoped' && label ? (
+            <Button variant="secondary" size="S">
+              {label}
             </Button>
-          </Modal.Close>
-          <Button
-            type="submit"
-            onClick={handleSubmit}
-            disabled={isSubmitButtonDisabled}
-            loading={isSubmitButtonLoading}
-          >
-            <FormattedMessage id={prefixKey('submit-button.title')} />
-          </Button>
-        </Modal.Footer>
-      </Modal.Content>
-    </Modal.Root>
+          ) : (
+            <IconButton>
+              <Drag />
+            </IconButton>
+          )}
+        </Modal.Trigger>
+        <Modal.Content>
+          <Modal.Header>
+            <Modal.Title>
+              <FormattedMessage id={prefixKey('title')} />
+            </Modal.Title>
+          </Modal.Header>
+          <Modal.Body>
+            {/* Main Display Field Section */}
+            <Box paddingBottom={4}>
+              <Typography variant="omega" fontWeight="semiBold" as="label" textColor="neutral800">
+                {mode === 'scoped' ? 'View by' : 'Sort by field'}
+              </Typography>
+              <Box paddingTop={2}>
+                <SingleSelect
+                  value={selectedDisplayField || mainField}
+                  onChange={(value: string) => {
+                    if (value) {
+                      setSelectedDisplayField(value);
+                    }
+                  }}
+                  disabled={isSubmitting}
+                  placeholder="Select a field"
+                  error={undefined}
+                >
+                  <SingleSelectOption value={mainField}>{mainField} (default)</SingleSelectOption>
+                  {getDisplayableFieldsMemo
+                    .filter((fieldName) => fieldName !== mainField)
+                    .map((fieldName) => {
+                      const attr = contentType?.attributes?.[fieldName];
+                      const fieldType =
+                        attr?.type === 'enumeration'
+                          ? ' (enum)'
+                          : attr?.type === 'relation'
+                            ? ' (relation)'
+                            : attr?.type === 'media'
+                              ? ' (media)'
+                              : '';
+                      return (
+                        <SingleSelectOption key={fieldName} value={fieldName}>
+                          {fieldName}
+                          {fieldType}
+                        </SingleSelectOption>
+                      );
+                    })}
+                </SingleSelect>
+              </Box>
+            </Box>
+
+            {/* Divider */}
+            <Divider />
+
+            {/* Additional Fields Section */}
+            <Box paddingTop={4} paddingBottom={4}>
+              <Typography
+                variant="omega"
+                fontWeight="semiBold"
+                as="label"
+                textColor="neutral600"
+                paddingBottom={3}
+              >
+                Additional display fields (optional)
+              </Typography>
+              <Grid.Root gap={3} columns={2}>
+                <Grid.Item col={1}>
+                  <Box>
+                    <Typography variant="pi" fontWeight="medium" as="label" textColor="neutral700">
+                      Field 1
+                    </Typography>
+                    <Box paddingTop={2}>
+                      <SingleSelect
+                        value={additionalDisplayField1 || undefined}
+                        onChange={(value: string) => {
+                          setAdditionalDisplayField1(value || '');
+                        }}
+                        disabled={isSubmitting}
+                        placeholder="None"
+                        clearLabel="Clear selection"
+                        onClear={() => setAdditionalDisplayField1('')}
+                        error={undefined}
+                      >
+                        <SingleSelectOption value="">None</SingleSelectOption>
+                        {getDisplayableFieldsMemo
+                          .filter(
+                            (fieldName) =>
+                              fieldName !== selectedDisplayField &&
+                              fieldName !== additionalDisplayField2
+                          )
+                          .map((fieldName) => {
+                            const attr = contentType?.attributes?.[fieldName];
+                            const fieldType =
+                              attr?.type === 'enumeration'
+                                ? ' (enum)'
+                                : attr?.type === 'relation'
+                                  ? ' (relation)'
+                                  : attr?.type === 'media'
+                                    ? ' (media)'
+                                    : '';
+                            return (
+                              <SingleSelectOption key={fieldName} value={fieldName}>
+                                {fieldName}
+                                {fieldType}
+                              </SingleSelectOption>
+                            );
+                          })}
+                      </SingleSelect>
+                    </Box>
+                  </Box>
+                </Grid.Item>
+                <Grid.Item col={1}>
+                  <Box>
+                    <Typography variant="pi" fontWeight="medium" as="label" textColor="neutral700">
+                      Field 2
+                    </Typography>
+                    <Box paddingTop={2}>
+                      <SingleSelect
+                        value={additionalDisplayField2 || undefined}
+                        onChange={(value: string) => {
+                          setAdditionalDisplayField2(value || '');
+                        }}
+                        disabled={isSubmitting}
+                        placeholder="None"
+                        clearLabel="Clear selection"
+                        onClear={() => setAdditionalDisplayField2('')}
+                        error={undefined}
+                      >
+                        <SingleSelectOption value="">None</SingleSelectOption>
+                        {getDisplayableFieldsMemo
+                          .filter(
+                            (fieldName) =>
+                              fieldName !== selectedDisplayField &&
+                              fieldName !== additionalDisplayField1
+                          )
+                          .map((fieldName) => {
+                            const attr = contentType?.attributes?.[fieldName];
+                            const fieldType =
+                              attr?.type === 'enumeration'
+                                ? ' (enum)'
+                                : attr?.type === 'relation'
+                                  ? ' (relation)'
+                                  : attr?.type === 'media'
+                                    ? ' (media)'
+                                    : '';
+                            return (
+                              <SingleSelectOption key={fieldName} value={fieldName}>
+                                {fieldName}
+                                {fieldType}
+                              </SingleSelectOption>
+                            );
+                          })}
+                      </SingleSelect>
+                    </Box>
+                  </Box>
+                </Grid.Item>
+              </Grid.Root>
+            </Box>
+            {mode === 'scoped' && (
+              <>
+                <Divider />
+                <Box paddingTop={4} paddingBottom={4}>
+                  <Box paddingBottom={3}>
+                    <Typography
+                      variant="omega"
+                      fontWeight="semiBold"
+                      as="label"
+                      textColor="neutral800"
+                    >
+                      Filter by field
+                    </Typography>
+                    <Box paddingTop={2}>
+                      <SingleSelect
+                        value={selectedFilterField || undefined}
+                        onChange={(value: string) => {
+                          setSelectedFilterField(value || '');
+                          setSelectedFilterValue(''); // Reset value when field changes
+                          setFilterSearchTerm(''); // Reset search term when field changes
+                        }}
+                        disabled={isSubmitting}
+                        placeholder="Select a field to filter by"
+                        clearLabel="Clear selection"
+                        onClear={() => {
+                          setSelectedFilterField('');
+                          setSelectedFilterValue('');
+                          setFilterSearchTerm('');
+                        }}
+                        error={undefined}
+                      >
+                        {getFilterableFieldsMemo.map((fieldName) => {
+                          const attr = contentType?.attributes?.[fieldName];
+                          const fieldType =
+                            attr?.type === 'enumeration'
+                              ? ' (enum)'
+                              : attr?.type === 'relation'
+                                ? ' (relation)'
+                                : '';
+                          return (
+                            <SingleSelectOption key={fieldName} value={fieldName}>
+                              {fieldName}
+                              {fieldType}
+                            </SingleSelectOption>
+                          );
+                        })}
+                      </SingleSelect>
+                    </Box>
+                  </Box>
+                  {selectedFilterField &&
+                    (() => {
+                      const selectedAttr = contentType?.attributes?.[selectedFilterField];
+                      const isRelationOrEnum =
+                        selectedAttr?.type === 'relation' || selectedAttr?.type === 'enumeration';
+                      const needsTextInput = !isRelationOrEnum && filterOptions.length === 0;
+
+                      return (
+                        <Box>
+                          <Typography
+                            variant="omega"
+                            fontWeight="semiBold"
+                            as="label"
+                            textColor="neutral800"
+                          >
+                            Filter value
+                          </Typography>
+                          <Box paddingTop={2}>
+                            {needsTextInput ? (
+                              // Text input for string, number, boolean, date, etc.
+                              <TextInput
+                                type={
+                                  selectedAttr?.type === 'boolean'
+                                    ? 'text'
+                                    : selectedAttr?.type === 'date' ||
+                                        selectedAttr?.type === 'datetime'
+                                      ? 'date'
+                                      : ['integer', 'biginteger', 'float', 'decimal'].includes(
+                                            selectedAttr?.type || ''
+                                          )
+                                        ? 'number'
+                                        : 'text'
+                                }
+                                value={selectedFilterValue}
+                                onChange={(e: { target: { value: string } }) =>
+                                  setSelectedFilterValue(e.target.value)
+                                }
+                                disabled={isSubmitting}
+                                placeholder={
+                                  selectedAttr?.type === 'boolean'
+                                    ? 'Enter true/false'
+                                    : selectedAttr?.type === 'date' ||
+                                        selectedAttr?.type === 'datetime'
+                                      ? 'Select date'
+                                      : `Enter ${selectedAttr?.type || 'value'}`
+                                }
+                              />
+                            ) : (
+                              // For relation fields: show search input + dropdown
+                              // For enumeration: show dropdown only
+                              <>
+                                {selectedAttr?.type === 'relation' && (
+                                  <Box paddingBottom={2}>
+                                    <TextInput
+                                      type="text"
+                                      value={filterSearchTerm}
+                                      onChange={(e: { target: { value: string } }) =>
+                                        setFilterSearchTerm(e.target.value)
+                                      }
+                                      disabled={isSubmitting || isLoadingOptions}
+                                      placeholder="Type to search..."
+                                      clearLabel="Clear search"
+                                      onClear={() => setFilterSearchTerm('')}
+                                    />
+                                  </Box>
+                                )}
+                                <SingleSelect
+                                  value={selectedFilterValue || undefined}
+                                  onChange={(value: string) => setSelectedFilterValue(value || '')}
+                                  disabled={
+                                    isSubmitting || isLoadingOptions || filterOptions.length === 0
+                                  }
+                                  placeholder={
+                                    isLoadingOptions
+                                      ? 'Loading options...'
+                                      : selectedAttr?.type === 'relation'
+                                        ? filterSearchTerm
+                                          ? 'Search results will appear here'
+                                          : 'Type to search or select from list'
+                                        : 'Select a value'
+                                  }
+                                  clearLabel="Clear selection"
+                                  onClear={() => setSelectedFilterValue('')}
+                                  error={undefined}
+                                >
+                                  {filterOptions.map((option) => (
+                                    <SingleSelectOption key={option.id} value={option.id}>
+                                      {option.label}
+                                    </SingleSelectOption>
+                                  ))}
+                                </SingleSelect>
+                              </>
+                            )}
+                          </Box>
+                        </Box>
+                      );
+                    })()}
+                </Box>
+              </>
+            )}
+            {mode === 'scoped' && (!selectedFilterField || !selectedFilterValue) ? (
+              <Box padding={4}>
+                <Typography variant="omega" textColor="neutral600">
+                  Please select a field and value to filter entries.
+                </Typography>
+              </Box>
+            ) : (
+              <SortModalBody
+                entriesFetchState={entriesFetchState}
+                mainField={selectedDisplayField}
+                additionalFields={[additionalDisplayField1, additionalDisplayField2].filter(
+                  (f) => f && f !== ''
+                )}
+                contentType={contentType}
+                handleDragEnd={handleDragEnd}
+                disabled={isSubmitting}
+              />
+            )}
+          </Modal.Body>
+          <Modal.Footer>
+            <Modal.Close>
+              <Button variant="tertiary">
+                <FormattedMessage id={prefixKey('cancel-button.title')} />
+              </Button>
+            </Modal.Close>
+            <Button
+              type="submit"
+              onClick={handleSubmit}
+              disabled={isSubmitButtonDisabled}
+              loading={isSubmitButtonLoading}
+            >
+              <FormattedMessage id={prefixKey('submit-button.title')} />
+            </Button>
+          </Modal.Footer>
+        </Modal.Content>
+      </Modal.Root>
+    </Tooltip.Provider>
   );
 };
 
