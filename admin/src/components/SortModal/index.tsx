@@ -256,36 +256,12 @@ const SortModal = ({ uid, mainField, contentType, mode = 'global', label }: Sort
           // Extract target UID from attribute (e.g., "api::test-category.test-category")
           const targetUid = attribute.target;
 
-          // Use remote search strategy: small pageSize + filter by searchTerm
-          // This allows finding records beyond the first 100 without loading everything
+          // Use Strapi's native search mechanism: use _q query param
+          // This follows Strapi's built-in search logic and avoids field validation errors
           const pageSize = 50;
-          const params: Record<string, unknown> = {
-            page: 1,
-            pageSize,
-            // Explicitly do NOT include sort parameter to avoid "Invalid key name" errors
-          };
-
-          // Add search filter if searchTerm is provided
-          // Search across common identifier fields: key, name, title, label, slug, code
-          if (searchTerm && searchTerm.trim() !== '') {
-            const searchFilters: any[] = [];
-            const searchFields = ['key', 'name', 'title', 'label', 'slug', 'code'];
-            searchFields.forEach((field) => {
-              searchFilters.push({
-                [field]: {
-                  $containsi: searchTerm.trim(),
-                },
-              });
-            });
-            if (searchFilters.length > 0) {
-              params.filters = {
-                $or: searchFilters,
-              };
-            }
-          }
 
           try {
-            // First, try to get the target contentType schema to find displayable fields
+            // Get target contentType schema to find displayable fields
             let targetContentType: any = null;
             try {
               const contentTypeResponse = await fetchClient.get(
@@ -297,7 +273,21 @@ const SortModal = ({ uid, mainField, contentType, mode = 'global', label }: Sort
               console.warn('Could not fetch target contentType schema:', schemaError);
             }
 
-            // Get all entries
+            // Build params using Strapi's native query params
+            // Use _q for search (Strapi's built-in search parameter)
+            const params: Record<string, unknown> = {
+              page: 1,
+              pageSize,
+            };
+
+            // Use Strapi's native _q parameter for search
+            // This follows Strapi's built-in search logic and automatically handles field validation
+            if (searchTerm && searchTerm.trim() !== '') {
+              params._q = searchTerm.trim();
+            }
+
+            // Get entries using Strapi's native API
+            // This follows the same pattern as Strapi Content Manager uses internally
             const targetEntries = await fetchClient.get(
               `/content-manager/collection-types/${targetUid}`,
               { params }
@@ -338,7 +328,7 @@ const SortModal = ({ uid, mainField, contentType, mode = 'global', label }: Sort
 
             // Map to options format
             const options = entries.map((entry: any) => {
-              let displayValue: string | null = null;
+              let displayValue: string = '';
 
               // First, try fields from schema (in order)
               for (const fieldName of displayableFieldNames) {
@@ -415,12 +405,14 @@ const SortModal = ({ uid, mainField, contentType, mode = 'global', label }: Sort
               }
 
               // Final fallback to documentId or id
-              if (!displayValue) {
-                displayValue = entry.documentId || String(entry.id);
+              if (!displayValue || displayValue === '') {
+                displayValue = entry.documentId || String(entry.id || '');
               }
 
+              const id: string = String(entry.documentId || entry.id || '');
+
               return {
-                id: entry.documentId || String(entry.id),
+                id,
                 label: displayValue,
               };
             });
@@ -1192,15 +1184,15 @@ const SortModal = ({ uid, mainField, contentType, mode = 'global', label }: Sort
                                 <SingleSelect
                                   value={selectedFilterValue || undefined}
                                   onChange={(value: string) => setSelectedFilterValue(value || '')}
-                                  disabled={
-                                    isSubmitting || isLoadingOptions || filterOptions.length === 0
-                                  }
+                                  disabled={isSubmitting || isLoadingOptions}
                                   placeholder={
                                     isLoadingOptions
                                       ? 'Loading options...'
                                       : selectedAttr?.type === 'relation'
                                         ? filterSearchTerm
-                                          ? 'Search results will appear here'
+                                          ? filterOptions.length === 0
+                                            ? 'No results found, try different search'
+                                            : 'Select from search results'
                                           : 'Type to search or select from list'
                                         : 'Select a value'
                                   }

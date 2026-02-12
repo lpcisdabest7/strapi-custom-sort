@@ -856,27 +856,6 @@ const SortModal = ({ uid, mainField, contentType, mode = "global", label }) => {
         if (attribute.type === "relation" && attribute.target) {
           const targetUid = attribute.target;
           const pageSize = 50;
-          const params = {
-            page: 1,
-            pageSize
-            // Explicitly do NOT include sort parameter to avoid "Invalid key name" errors
-          };
-          if (searchTerm && searchTerm.trim() !== "") {
-            const searchFilters = [];
-            const searchFields = ["key", "name", "title", "label", "slug", "code"];
-            searchFields.forEach((field) => {
-              searchFilters.push({
-                [field]: {
-                  $containsi: searchTerm.trim()
-                }
-              });
-            });
-            if (searchFilters.length > 0) {
-              params.filters = {
-                $or: searchFilters
-              };
-            }
-          }
           try {
             let targetContentType = null;
             try {
@@ -886,6 +865,13 @@ const SortModal = ({ uid, mainField, contentType, mode = "global", label }) => {
               targetContentType = contentTypeResponse?.data?.data;
             } catch (schemaError) {
               console.warn("Could not fetch target contentType schema:", schemaError);
+            }
+            const params = {
+              page: 1,
+              pageSize
+            };
+            if (searchTerm && searchTerm.trim() !== "") {
+              params._q = searchTerm.trim();
             }
             const targetEntries = await fetchClient.get(
               `/content-manager/collection-types/${targetUid}`,
@@ -909,7 +895,7 @@ const SortModal = ({ uid, mainField, contentType, mode = "global", label }) => {
             }
             const commonDisplayFields = ["key", "name", "title", "label", "slug", "code", "value"];
             const options = entries.map((entry) => {
-              let displayValue = null;
+              let displayValue = "";
               for (const fieldName2 of displayableFieldNames) {
                 const value = entry[fieldName2];
                 if (value !== null && value !== void 0 && value !== "" && typeof value === "string" && !Array.isArray(value) && typeof value !== "object") {
@@ -951,11 +937,12 @@ const SortModal = ({ uid, mainField, contentType, mode = "global", label }) => {
                   }
                 }
               }
-              if (!displayValue) {
-                displayValue = entry.documentId || String(entry.id);
+              if (!displayValue || displayValue === "") {
+                displayValue = entry.documentId || String(entry.id || "");
               }
+              const id = String(entry.documentId || entry.id || "");
               return {
-                id: entry.documentId || String(entry.id),
+                id,
                 label: displayValue
               };
             });
@@ -1504,8 +1491,8 @@ const SortModal = ({ uid, mainField, contentType, mode = "global", label }) => {
                       {
                         value: selectedFilterValue || void 0,
                         onChange: (value) => setSelectedFilterValue(value || ""),
-                        disabled: isSubmitting || isLoadingOptions || filterOptions.length === 0,
-                        placeholder: isLoadingOptions ? "Loading options..." : selectedAttr?.type === "relation" ? filterSearchTerm ? "Search results will appear here" : "Type to search or select from list" : "Select a value",
+                        disabled: isSubmitting || isLoadingOptions,
+                        placeholder: isLoadingOptions ? "Loading options..." : selectedAttr?.type === "relation" ? filterSearchTerm ? filterOptions.length === 0 ? "No results found, try different search" : "Select from search results" : "Type to search or select from list" : "Select a value",
                         clearLabel: "Clear selection",
                         onClear: () => setSelectedFilterValue(""),
                         error: void 0,
